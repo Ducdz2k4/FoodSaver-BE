@@ -1,6 +1,6 @@
 # FoodSaver - Backend (Modular / Feature-Based Architecture)
 
-Dự án Backend cho hệ thống **FoodSaver**, được thiết kế chuẩn mực theo kiến trúc **Modular / Feature-Based Architecture** (kết hợp mô hình MVC khép kín trong từng Module/Feature) nhằm đảm bảo tính độc lập, dễ mở rộng và ngăn chặn tình trạng mã nguồn phình to khó quản lý khi dự án phát triển nhiều tính năng.
+Dự án Backend cho hệ thống **FoodSaver**, được thiết kế chuẩn mực theo kiến trúc **Modular / Feature-Based Architecture** (kết hợp mô hình MVC khép kín bên trong từng Feature Module). Dự án sử dụng **Express.js**, **Prisma ORM** (Multi-file Schema Mapping tự động, không dùng SQL thủ công), **MySQL 8 (Docker)**, **JWT Authentication**, và **Global Exception Handling**.
 
 ---
 
@@ -8,63 +8,69 @@ Dự án Backend cho hệ thống **FoodSaver**, được thiết kế chuẩn m
 
 ### 1. Phân biệt với Layered Architecture (Horizontal Monolith)
 - ❌ **Layered Architecture (Chia theo tầng ngang truyền thống):**
-  - Mọi Controller nằm trong `src/controllers/`
-  - Mọi Model nằm trong `src/models/`
-  - Mọi Service nằm trong `src/services/`
-  - 👉 **Hậu quả:** Khi dự án có 50+ tính năng, mỗi thư mục phình to thành hàng trăm file. Một thay đổi nhỏ ở tính năng `foods` đòi hỏi phải mở cùng lúc nhiều thư mục xa nhau, dễ gây xung đột git (merge conflict) và khó phân công công việc.
+  - Mọi Controller gom vào `src/controllers/`, mọi Model gom vào `src/models/`, mọi Route gom vào `src/routes/`.
+  - 👉 **Hậu quả:** Khi dự án đạt 50+ tính năng, mỗi thư mục phình to thành hàng trăm file, việc bảo trì trở nên phân mảnh và dễ gây xung đột merge conflict.
 
 - ✅ **Modular / Feature-Based Architecture (Chia theo tính năng dọc - Vertical Slicing):**
-  - Dự án được chia thành từng **Feature Module độc lập** (Self-contained modules) đại diện cho từng nghiệp vụ (Domain): `auth`, `users`, `foods`, `orders`, `donations`, v.v.
+  - Dự án được chia thành từng **Feature Module độc lập** theo Domain nghiệp vụ: `auth`, `users`, `foods`, `orders`, v.v.
   - Mỗi Feature Module chứa trọn vẹn chu trình xử lý của chính nó: **Route ➔ Validation ➔ Controller ➔ Service ➔ Model**.
   - 👉 **Lợi ích:** 
-    - **Tính gắn kết cao (High Cohesion):** Code liên quan mật thiết nằm cạnh nhau.
-    - **Khớp nối lỏng (Loose Coupling):** Các module hoạt động độc lập, không phụ thuộc chéo bừa bãi.
-    - **Dễ bảo trì & tháo rời:** Muốn xóa, sửa hay thêm mới một tính năng chỉ cần thao tác trong đúng thư mục module đó mà không sợ ảnh hưởng đến phần còn lại.
+    - **High Cohesion (Gắn kết cao):** Mọi logic của tính năng nằm cạnh nhau.
+    - **Loose Coupling (Khớp nối lỏng):** Các module không can thiệp sâu vào cấu trúc nội bộ của nhau.
+    - **Dễ mở rộng:** Thêm mới hoặc gỡ bỏ một module mà không ảnh hưởng tới các phần còn lại.
 
 ---
 
-## 🏗️ Cấu trúc thư mục chuẩn (Folder Structure)
+## 🏗️ Cấu trúc thư mục (Folder Structure)
 
 ```text
 BE/
+├── docker-compose.yml               # Cấu hình Docker cho MySQL 8 & phpMyAdmin
+├── prisma/                          # THƯ MỤC CẤU HÌNH ORM PRISMA
+│   ├── schema/                      # MULTI-FILE SCHEMA (Tách riêng schema theo từng Domain)
+│   │   ├── base.prisma              # Datasource MySQL & Generator Client
+│   │   ├── user.prisma              # Entity User, Role, UserStatus (Domain User)
+│   │   └── food.prisma              # Entity Food, FoodCategory, FoodStatus (Domain Food)
+│   └── seed.js                      # Script nạp dữ liệu mẫu bằng Prisma Client thuần (admin, user, partner)
 ├── .env.example                     # Mẫu biến môi trường
-├── .env                             # Biến môi trường hiện tại (được .gitignore bảo vệ)
-├── .gitignore                       # Bỏ qua node_modules, .env, logs
-├── package.json                     # Quản lý dependencies & scripts ("type": "module")
-├── README.md                        # Tài liệu kiến trúc và hướng dẫn dự án
+├── .env                             # Biến môi trường hiện tại
+├── .gitignore                       # Loại trừ node_modules, .env, logs
+├── package.json
 └── src/
-    ├── app.js                       # Khởi tạo Express, bảo mật (Helmet, CORS), parser & error handlers
+    ├── app.js                       # Cấu hình Express, Security (Helmet, CORS), Routes, Error Handlers
     ├── server.js                    # Entry point, Process exception guards, Graceful shutdown
-    ├── config/                      # Cấu hình hệ thống chung
+    ├── config/
     │   ├── env.js                   # Load và validate biến môi trường tập trung
-    │   └── database.js              # Quản lý kết nối Database (MongoDB / PostgreSQL / Prisma)
-    ├── shared/                      # Các thành phần dùng chung phi nghiệp vụ (Cross-cutting Concerns)
+    │   └── database.js              # Khởi tạo PrismaClient & quản lý vòng đời kết nối MySQL
+    ├── shared/                      # Hạ tầng & tiện ích dùng chung (Cross-cutting Concerns)
     │   ├── constants/
-    │   │   └── httpStatus.js        # HTTP Status Codes chuẩn hóa
+    │   │   └── httpStatus.js        # Mã HTTP Status chuẩn
     │   ├── middlewares/
-    │   │   ├── errorHandler.js      # Global Centralized Error Handler
-    │   │   ├── notFound.js          # Middleware bắt lỗi 404 Route Not Found
-    │   │   └── validate.js          # Middleware validate dữ liệu đầu vào bằng Zod
+    │   │   ├── auth.js              # Middleware xác thực JWT (authenticate) & phân quyền RBAC (authorize)
+    │   │   ├── errorHandler.js      # Global Centralized Error Handler (bắt lỗi Prisma, JWT, JSON body, 500)
+    │   │   ├── notFound.js          # Xử lý 404 Route Not Found
+    │   │   └── validate.js          # Validate input bằng Zod Schema
     │   └── utils/
     │       ├── apiError.js          # Lớp ApiError chuẩn hóa mã lỗi & thông điệp
     │       ├── apiResponse.js       # Chuẩn hóa format phản hồi JSON thống nhất
-    │       └── asyncHandler.js      # Wrapper bọc async controller tránh try/catch lặp
+    │       ├── asyncHandler.js      # Wrapper bọc async controller
+    │       └── jwt.js               # Helper ký & giải mã Access Token / Refresh Token
     ├── routes/
-    │   └── index.js                 # Master Router tổng hợp các route từ từng Feature Module
-    └── modules/                     # CÁC FEATURE / DOMAIN MODULES
-        ├── auth/                    # Feature: Xác thực người dùng
-        │   ├── auth.controller.js   # C: Tiếp nhận HTTP request, trả về ApiResponse
-        │   ├── auth.service.js      # Business Logic: Mã hóa mật khẩu, tạo token
-        │   ├── auth.model.js        # M: Truy vấn dữ liệu tài khoản
-        │   ├── auth.routes.js       # Khai báo endpoint URL của auth
-        │   └── auth.validation.js   # Schema validate input (Zod)
-        ├── users/                   # Feature: Quản lý người dùng
+    │   └── index.js                 # Master Router tổng hợp các module
+    └── modules/
+        ├── auth/                    # Module xác thực & phiên làm việc
+        │   ├── auth.controller.js
+        │   ├── auth.service.js
+        │   ├── auth.model.js
+        │   ├── auth.routes.js
+        │   └── auth.validation.js
+        ├── users/                   # Module quản lý người dùng (Admin & RBAC)
         │   ├── user.controller.js
         │   ├── user.service.js
-        │   ├── user.model.js
+        │   ├── user.model.js        # 100% Prisma ORM queries (prisma.user)
         │   ├── user.routes.js
         │   └── user.validation.js
-        └── foods/                   # Feature: Món ăn cứu trợ (FoodSaver domain)
+        └── foods/                   # Module giải cứu thực phẩm (FoodSaver)
             ├── food.controller.js
             ├── food.service.js
             ├── food.model.js
@@ -74,87 +80,63 @@ BE/
 
 ---
 
-## 🛡️ Cơ chế Global Exception Handling (Xử lý ngoại lệ toàn cục)
+## 🗄️ Multi-file Prisma Schema (Tự động Map DB theo Domain)
 
-Dự án triển khai hệ thống bắt lỗi đa tầng bảo vệ để đảm bảo ứng dụng không bao giờ bị crash đột ngột hoặc lộ thông tin nhạy cảm:
+Thay vì dồn tất cả model vào một file đơn lẻ, dự án áp dụng tính năng **Multi-file Schema** của Prisma để tách độc lập:
 
-1. **Tầng tiến trình (Process-Level Guards - `src/server.js`):**
-   - `uncaughtException`: Đặt ngay đầu file server để bắt mọi ngoại lệ đồng bộ chưa được xử lý, ghi log và thoát tiến trình an toàn.
-   - `unhandledRejection`: Bắt toàn bộ các Promise bị rejected mà không có `.catch()`, thực hiện đóng HTTP server an toàn (`graceful shutdown`) trước khi kết thúc.
-   - `SIGINT` & `SIGTERM`: Bắt tín hiệu dừng tiến trình để giải phóng kết nối database và tài nguyên mạng sạch sẽ.
+- **`prisma/schema/base.prisma`**: Cấu hình MySQL datasource và client.
+- **`prisma/schema/user.prisma`**: Định nghĩa model `User` và các Enum `Role`, `UserStatus`.
+- **`prisma/schema/food.prisma`**: Định nghĩa model `Food` và các Enum `FoodCategory`, `FoodStatus`.
 
-2. **Tầng ứng dụng (Express Centralized Middleware - `src/shared/middlewares/errorHandler.js`):**
-   - **Tự động bắt lỗi cú pháp JSON**: Khi client gửi body JSON sai định dạng, middleware chuẩn hóa thành HTTP 400 Bad Request kèm thông báo thân thiện.
-   - **Tự động bắt lỗi Cơ sở dữ liệu (MongoDB/Mongoose)**: Tự động chuyển đổi `CastError` (sai ID), `code 11000` (trùng lặp unique), `ValidationError` thành mã lỗi HTTP tương ứng (400, 409).
-   - **Tự động bắt lỗi JWT**: Xử lý token hết hạn hoặc token giả mạo thành HTTP 401.
-   - **Bảo mật Production**: Tự động che giấu `stack trace` và thông báo lỗi hệ thống nội bộ khi chạy ở môi trường `production`.
-
-3. **Tầng Controller & Nghiệp vụ (Async & Custom Error - `ApiError` + `asyncHandler`):**
-   - Các controller được bọc trong `asyncHandler`, loại bỏ hoàn toàn việc lặp lại khối `try...catch` thủ công.
-   - Bắn lỗi nghiệp vụ trực tiếp thông qua `throw ApiError.badRequest(...)`, `throw ApiError.notFound(...)`, `throw ApiError.conflict(...)`.
+Khi có domain mới (ví dụ `orders`), bạn chỉ cần tạo `prisma/schema/order.prisma`.
 
 ---
 
-## 🚀 Hướng dẫn thêm một Feature Module mới (Quy trình chuẩn)
+## 🐳 Cấu hình MySQL & phpMyAdmin qua Docker
 
-Giả sử bạn cần tạo tính năng **Quản lý Đơn hàng (`orders`)**:
+Container MySQL chạy thuần túy, Prisma ORM sẽ chịu trách nhiệm sinh bảng và cập nhật cấu trúc:
+- **MySQL 8.0**: Port `3306`.
+- **phpMyAdmin**: Giao diện trực quan trên web tại `http://localhost:8080`.
 
-1. **Tạo thư mục module**: `src/modules/orders/`
-2. **Tạo các file thành phần theo chuẩn**:
-   - `order.validation.js`: Khai báo Zod schema cho body/params/query.
-   - `order.model.js`: Khai báo truy vấn cơ sở dữ liệu cho đơn hàng.
-   - `order.service.js`: Viết logic nghiệp vụ (kiểm tra tồn kho món ăn, tính tổng tiền, đổi trạng thái).
-   - `order.controller.js`: Xử lý HTTP request và gọi `ApiResponse.success(...)` hoặc `ApiResponse.created(...)`.
-   - `order.routes.js`: Định nghĩa các route (`POST /`, `GET /`, `GET /:id`), gắn middleware `validate(...)`.
-3. **Đăng ký module vào Master Router (`src/routes/index.js`)**:
-   ```javascript
-   import { orderRoutes } from '../modules/orders/order.routes.js';
-
-   router.use('/orders', orderRoutes);
-   ```
-*(Chỉ với 3 bước trên, tính năng mới đã sẵn sàng mà không cần chạm vào code của bất kỳ feature nào khác).*
-
----
-
-## 💻 Cài đặt & Khởi chạy
-
-### Cài đặt dependencies:
+### Lệnh quản lý:
 ```bash
-cd BE
-npm install
+# 1. Bật MySQL & phpMyAdmin qua Docker
+npm run docker:up
+
+# 2. Tự động đồng bộ Schema từ prisma/schema vào MySQL (Tương tự ddl-auto=update của JPA)
+npm run db:push
+
+# 3. Nạp dữ liệu mẫu ban đầu qua Prisma Client
+npm run db:seed
+
+# 4. Tắt Docker containers khi không dùng
+npm run docker:down
 ```
 
-### Thiết lập biến môi trường:
-```bash
-cp .env.example .env
-```
-
-### Chạy ứng dụng:
-- **Phát triển (Nodemon tự reload):**
-  ```bash
-  npm run dev
-  ```
-- **Môi trường Production:**
-  ```bash
-  npm start
-  ```
-
 ---
 
-## 📡 Danh sách API mẫu có sẵn
+## 📡 Danh sách API chi tiết
 
-| Method | Endpoint | Module | Mô tả |
+### 1. Auth APIs (`/api/v1/auth`)
+
+| Method | Endpoint | Quyền | Mô tả |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Core | Kiểm tra sức khỏe server (Health check) |
-| `POST` | `/api/v1/auth/register` | `auth` | Đăng ký tài khoản (hỗ trợ role `user`, `partner`) |
-| `POST` | `/api/v1/auth/login` | `auth` | Đăng nhập hệ thống |
-| `GET` | `/api/v1/auth/me` | `auth` | Lấy thông tin tài khoản đang đăng nhập |
-| `GET` | `/api/v1/users` | `users` | Danh sách người dùng (hỗ trợ query `search`, `role`) |
-| `GET` | `/api/v1/users/:id` | `users` | Chi tiết 1 người dùng |
-| `PUT` | `/api/v1/users/:id` | `users` | Cập nhật hồ sơ người dùng |
-| `DELETE` | `/api/v1/users/:id` | `users` | Xóa người dùng |
-| `GET` | `/api/v1/foods` | `foods` | Danh sách món ăn cứu trợ (`search`, `category`, `maxPrice`, `status`) |
-| `POST` | `/api/v1/foods` | `foods` | Đăng tin món ăn cứu trợ |
-| `GET` | `/api/v1/foods/:id` | `foods` | Chi tiết món ăn |
-| `PUT` | `/api/v1/foods/:id` | `foods` | Cập nhật thông tin món ăn |
-| `DELETE` | `/api/v1/foods/:id` | `foods` | Xóa món ăn |
+| `POST` | `/api/v1/auth/register` | Public | Đăng ký tài khoản mới (`USER` hoặc `PARTNER`) |
+| `POST` | `/api/v1/auth/login` | Public | Đăng nhập hệ thống, trả về `accessToken` và `refreshToken` |
+| `POST` | `/api/v1/auth/refresh-token` | Public | Cấp lại `accessToken` từ `refreshToken` hợp lệ |
+| `GET` | `/api/v1/auth/me` | Bearer Token | Lấy thông tin cá nhân của người dùng hiện tại |
+| `PUT` | `/api/v1/auth/profile` | Bearer Token | Cập nhật họ tên, điện thoại, địa chỉ, avatar, bio |
+| `POST` | `/api/v1/auth/change-password` | Bearer Token | Đổi mật khẩu tài khoản và thu hồi refresh token |
+| `POST` | `/api/v1/auth/logout` | Bearer Token | Đăng xuất và vô hiệu hóa refresh token trong database |
+
+### 2. User Management APIs (`/api/v1/users`)
+
+| Method | Endpoint | Quyền | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/users` | Admin | Lấy danh sách người dùng (hỗ trợ `page`, `limit`, `search`, `role`, `status`) |
+| `POST` | `/api/v1/users` | Admin | Tạo mới tài khoản người dùng bởi Admin |
+| `GET` | `/api/v1/users/:id` | Authenticated | Xem chi tiết thông tin 1 người dùng theo ID |
+| `PUT` | `/api/v1/users/:id` | Admin | Cập nhật thông tin người dùng |
+| `PATCH` | `/api/v1/users/:id/status` | Admin | Cập nhật trạng thái (`ACTIVE`, `INACTIVE`, `BANNED`) |
+| `PATCH` | `/api/v1/users/:id/role` | Admin | Phân quyền vai trò (`USER`, `PARTNER`, `ADMIN`) |
+| `DELETE` | `/api/v1/users/:id` | Admin | Xóa tài khoản người dùng (ngăn chặn tự xóa tài khoản Admin đang login) |

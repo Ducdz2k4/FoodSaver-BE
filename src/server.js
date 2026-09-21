@@ -7,7 +7,7 @@ process.on('uncaughtException', (error) => {
 
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { connectDatabase } from './config/database.js';
+import { connectDatabase, disconnectDatabase } from './config/database.js';
 
 let server;
 
@@ -27,14 +27,17 @@ const startServer = async () => {
     console.log(`=============================================`);
   });
 
-  const handleShutdown = (signal) => {
-    console.log(`\n[Server] Received ${signal}. Closing HTTP server gracefully...`);
+  const handleShutdown = async (signal) => {
+    console.log(`\n[Server] Received ${signal}. Closing HTTP server and database gracefully...`);
+    
     if (server) {
-      server.close(() => {
-        console.log('[Server] HTTP server closed cleanly. Exiting process.');
+      server.close(async () => {
+        await disconnectDatabase();
+        console.log('[Server] HTTP server and DB connections closed. Exiting process.');
         process.exit(0);
       });
     } else {
+      await disconnectDatabase();
       process.exit(0);
     }
 
@@ -53,7 +56,8 @@ const startServer = async () => {
   process.on('unhandledRejection', (reason) => {
     console.error('[FATAL] Unhandled Promise Rejection:', reason);
     if (server) {
-      server.close(() => {
+      server.close(async () => {
+        await disconnectDatabase();
         console.error('[Server] Process exiting due to unhandled promise rejection.');
         process.exit(1);
       });

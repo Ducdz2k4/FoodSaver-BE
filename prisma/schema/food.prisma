@@ -1,0 +1,40 @@
+enum FoodCategory {
+  BAKERY
+  COOKED_MEAL
+  GROCERIES
+  FRUITS
+  DRINKS
+  OTHER
+}
+
+enum FoodStatus {
+  AVAILABLE
+  RESERVED
+  SOLD_OUT
+  EXPIRED
+}
+
+model Food {
+  id              String       @id @default(uuid())
+  title           String       @db.VarChar(150)
+  description     String?      @db.Text
+  category        FoodCategory @default(OTHER)
+  originalPrice   Decimal      @db.Decimal(12, 2)
+  discountedPrice Decimal      @db.Decimal(12, 2)
+  quantity        Int          @default(1)
+  unit            String       @default("phần") @db.VarChar(50)
+  expiryTime      DateTime
+  pickupAddress   String       @db.VarChar(255)
+  status          FoodStatus   @default(AVAILABLE)
+
+  donorId         String?
+  donor           User?        @relation(fields: [donorId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@index([donorId])
+  @@map("foods")
+}

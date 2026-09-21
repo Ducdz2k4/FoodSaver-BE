@@ -1,92 +1,115 @@
-import crypto from 'crypto';
+import { prisma } from '../../config/database.js';
 
-// In-memory data store for initial setup (Ready to replace with Mongoose / Prisma)
-const usersTable = [
-  {
-    id: 'usr_1',
-    fullName: 'Nguyen Van A',
-    email: 'user@foodsaver.vn',
-    password: 'password123',
-    role: 'user',
-    phone: '0912345678',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: 'usr_2',
-    fullName: 'Nha Hang Xanh',
-    email: 'partner@foodsaver.vn',
-    password: 'password123',
-    role: 'partner',
-    phone: '0987654321',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+const SAFE_USER_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  phone: true,
+  avatar: true,
+  role: true,
+  status: true,
+  address: true,
+  bio: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true
+};
 
 export const UserModel = {
-  async findAll({ search, role } = {}) {
-    let result = [...usersTable];
+  /**
+   * Prisma ORM: Find all users with pagination, filters and search
+   */
+  async findAll({ page = 1, limit = 10, search, role, status } = {}) {
+    const skip = (page - 1) * limit;
+    const where = {};
 
+    if (role) where.role = role;
+    if (status) where.status = status;
     if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(u =>
-        u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-      );
+      where.OR = [
+        { fullName: { contains: search } },
+        { email: { contains: search } }
+      ];
     }
 
-    if (role) {
-      result = result.filter(u => u.role === role);
-    }
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: SAFE_USER_SELECT
+      }),
+      prisma.user.count({ where })
+    ]);
 
-    return result.map(({ password: _, ...safeUser }) => safeUser);
+    return {
+      users,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
   },
 
+  /**
+   * Prisma ORM: Find single user by ID (excludes password)
+   */
   async findById(id) {
-    const user = usersTable.find(u => u.id === id);
-    if (!user) return null;
-    const { password: _, ...safeUser } = user;
-    return safeUser;
+    return prisma.user.findUnique({
+      where: { id },
+      select: SAFE_USER_SELECT
+    });
   },
 
+  /**
+   * Prisma ORM: Find single user with password (internal use for authentication)
+   */
+  async findByIdWithPassword(id) {
+    return prisma.user.findUnique({
+      where: { id }
+    });
+  },
+
+  /**
+   * Prisma ORM: Find single user by unique email
+   */
   async findByEmail(email) {
-    return usersTable.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+    return prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() }
+    });
   },
 
+  /**
+   * Prisma ORM: Create a new user record
+   */
   async create(userData) {
-    const newUser = {
-      id: `usr_${crypto.randomUUID().slice(0, 8)}`,
-      ...userData,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    usersTable.push(newUser);
-    const { password: _, ...safeUser } = newUser;
-    return safeUser;
+    return prisma.user.create({
+      data: {
+        ...userData,
+        email: userData.email.toLowerCase().trim()
+      },
+      select: SAFE_USER_SELECT
+    });
   },
 
+  /**
+   * Prisma ORM: Update user by ID
+   */
   async update(id, updateData) {
-    const index = usersTable.findIndex(u => u.id === id);
-    if (index === -1) return null;
-
-    usersTable[index] = {
-      ...usersTable[index],
-      ...updateData,
-      updatedAt: new Date().toISOString()
-    };
-
-    const { password: _, ...safeUser } = usersTable[index];
-    return safeUser;
+    return prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: SAFE_USER_SELECT
+    });
   },
 
+  /**
+   * Prisma ORM: Delete user by ID
+   */
   async delete(id) {
-    const index = usersTable.findIndex(u => u.id === id);
-    if (index === -1) return false;
-    usersTable.splice(index, 1);
-    return true;
+    return prisma.user.delete({
+      where: { id }
+    });
   }
 };
