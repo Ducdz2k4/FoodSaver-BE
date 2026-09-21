@@ -1,0 +1,34 @@
+enum Role {
+  USER
+  PARTNER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique @db.VarChar(191)
+  password     String     @db.VarChar(255)
+  fullName     String     @db.VarChar(100)
+  phone        String?    @db.VarChar(20)
+  avatar       String?    @db.VarChar(255)
+  role         Role       @default(USER)
+  status       UserStatus @default(ACTIVE)
+  address      String?    @db.VarChar(255)
+  bio          String?    @db.Text
+  refreshToken String?    @db.Text
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  foods        Food[]
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}

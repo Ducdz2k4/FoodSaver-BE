@@ -10,7 +10,9 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : '*',
   databaseUrl: process.env.DATABASE_URL || '',
   jwt: {
-    secret: process.env.JWT_SECRET || 'default_jwt_secret',
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    secret: process.env.JWT_SECRET || 'super_secret_jwt_key_foodsaver_2026_secure',
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || 'super_secret_refresh_jwt_key_foodsaver_2026',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
   }
 };

@@ -1,20 +1,33 @@
+import { PrismaClient } from '@prisma/client';
 import { env } from './env.js';
+
+export const prisma = new PrismaClient({
+  log: env.isProduction ? ['error'] : ['warn', 'error']
+});
 
 export const connectDatabase = async () => {
   try {
     if (!env.databaseUrl) {
-      console.warn('[Database] DATABASE_URL not set. Running with local/in-memory data stores.');
-      return;
+      console.warn('[Database] DATABASE_URL is not configured.');
+      return false;
     }
 
-    // Connect your ORM/ODM here (e.g. Mongoose, Prisma, Sequelize)
-    // Example with Mongoose:
-    // await mongoose.connect(env.databaseUrl);
-
-    console.log(`[Database] Connected successfully to: ${env.databaseUrl.split('@').pop()}`);
+    await prisma.$connect();
+    const sanitizedUrl = env.databaseUrl.replace(/:[^:@]+@/, ':****@');
+    console.log(`[Database] MySQL connected successfully via Prisma ORM (${sanitizedUrl})`);
+    return true;
   } catch (error) {
-    console.error('[Database] Connection failed:', error.message);
-    // Exit if DB is critical for application boot
-    // process.exit(1);
+    console.warn('[Database] Could not connect to MySQL:', error.message);
+    console.warn('[Database] Tip: Run "npm run docker:up" to start the MySQL container.');
+    return false;
+  }
+};
+
+export const disconnectDatabase = async () => {
+  try {
+    await prisma.$disconnect();
+    console.log('[Database] Disconnected from MySQL.');
+  } catch (error) {
+    console.error('[Database] Error disconnecting:', error.message);
   }
 };
