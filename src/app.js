@@ -13,8 +13,24 @@ export const createApp = () => {
   // Security & utility middlewares
   app.use(helmet());
   app.use(cors({
-    origin: env.corsOrigin === '*' ? '*' : env.corsOrigin,
-    credentials: true
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // In development, allow all localhost and 127.0.0.1 origins
+      if (!env.isProduction || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+
+      if (Array.isArray(env.corsOrigin) && env.corsOrigin.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   }));
   app.use(morgan(env.isProduction ? 'combined' : 'dev'));
   app.use(express.json());
