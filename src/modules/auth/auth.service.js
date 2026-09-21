@@ -37,7 +37,7 @@ export const AuthService = {
   },
 
   async login({ email, password }) {
-    const user = await UserModel.findByEmail(email);
+    const user = await UserModel.findByEmailWithPassword(email);
     if (!user) {
       throw ApiError.unauthorized('Email hoặc mật khẩu không chính xác');
     }

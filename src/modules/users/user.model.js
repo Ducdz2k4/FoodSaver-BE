@@ -20,7 +20,9 @@ export const UserModel = {
    * Prisma ORM: Find all users with pagination, filters and search
    */
   async findAll({ page = 1, limit = 10, search, role, status } = {}) {
-    const skip = (page - 1) * limit;
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
     const where = {};
 
     if (role) where.role = role;
@@ -36,7 +38,7 @@ export const UserModel = {
       prisma.user.findMany({
         where,
         skip,
-        take: limit,
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         select: SAFE_USER_SELECT
       }),
@@ -46,9 +48,9 @@ export const UserModel = {
     return {
       users,
       total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit)
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum)
     };
   },
 
@@ -72,34 +74,41 @@ export const UserModel = {
   },
 
   /**
-   * Prisma ORM: Find single user by unique email
+   * Prisma ORM: Find user by email (excludes password)
    */
   async findByEmail(email) {
     return prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() }
-    });
-  },
-
-  /**
-   * Prisma ORM: Create a new user record
-   */
-  async create(userData) {
-    return prisma.user.create({
-      data: {
-        ...userData,
-        email: userData.email.toLowerCase().trim()
-      },
+      where: { email },
       select: SAFE_USER_SELECT
     });
   },
 
   /**
-   * Prisma ORM: Update user by ID
+   * Prisma ORM: Find user by email including password
    */
-  async update(id, updateData) {
+  async findByEmailWithPassword(email) {
+    return prisma.user.findUnique({
+      where: { email }
+    });
+  },
+
+  /**
+   * Prisma ORM: Create new user
+   */
+  async create(data) {
+    return prisma.user.create({
+      data,
+      select: SAFE_USER_SELECT
+    });
+  },
+
+  /**
+   * Prisma ORM: Update existing user by ID
+   */
+  async update(id, data) {
     return prisma.user.update({
       where: { id },
-      data: updateData,
+      data,
       select: SAFE_USER_SELECT
     });
   },
@@ -109,7 +118,8 @@ export const UserModel = {
    */
   async delete(id) {
     return prisma.user.delete({
-      where: { id }
+      where: { id },
+      select: { id: true, email: true }
     });
   }
 };
