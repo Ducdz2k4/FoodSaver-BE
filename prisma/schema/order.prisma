@@ -1,0 +1,47 @@
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+model Order {
+  id                 String      @id @default(uuid())
+  orderNumber        String      @unique @db.VarChar(32)
+  listingId          String
+  customerId         String
+  quantity           Int         @default(1)
+  unitPrice          Decimal     @db.Decimal(12, 2)
+  totalPrice         Decimal     @db.Decimal(12, 2)
+  status             OrderStatus @default(PENDING)
+  pickupTimeWindow   String      @db.VarChar(100)
+  customerNotes      String?     @db.VarChar(255)
+  cancellationReason String?     @db.VarChar(255)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  listing  Listing              @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  customer User                 @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  history  OrderStatusHistory[]
+
+  @@index([listingId])
+  @@index([customerId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderStatusHistory {
+  id        String       @id @default(uuid())
+  orderId   String
+  oldStatus OrderStatus?
+  newStatus OrderStatus
+  changedBy String       @db.VarChar(36)
+  note      String?      @db.VarChar(255)
+  createdAt DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
