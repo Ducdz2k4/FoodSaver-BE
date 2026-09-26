@@ -1,0 +1,42 @@
+enum BusinessType {
+  CONVENIENCE_STORE
+  BAKERY
+  RESTAURANT
+  SUPERMARKET
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model PartnerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  businessName       String             @db.VarChar(150)
+  businessLicenseNo  String             @db.VarChar(100)
+  businessLicenseUrl String             @db.VarChar(500)
+  foodSafetyCertUrl  String             @db.VarChar(500)
+  businessType       BusinessType       @default(OTHER)
+  verificationStatus VerificationStatus @default(PENDING)
+  rejectionReason    String?            @db.Text
+  verifiedBy         String?            @db.VarChar(36)
+  verifiedAt         DateTime?
+  address            String             @db.VarChar(255)
+  lat                Decimal            @db.Decimal(10, 8)
+  lng                Decimal            @db.Decimal(11, 8)
+  geohash            String             @db.VarChar(12)
+  phone              String             @db.VarChar(20)
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listings Listing[]
+
+  @@index([verificationStatus])
+  @@index([geohash])
+  @@map("partner_profiles")
+}

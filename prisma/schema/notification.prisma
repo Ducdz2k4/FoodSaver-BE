@@ -1,0 +1,24 @@
+enum NotificationType {
+  NEW_LISTING_NEARBY
+  ORDER_STATUS_UPDATED
+  EXPIRY_WARNING
+  PARTNER_VERIFIED
+  PARTNER_REJECTED
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String           @db.VarChar(150)
+  message   String           @db.Text
+  payload   Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}

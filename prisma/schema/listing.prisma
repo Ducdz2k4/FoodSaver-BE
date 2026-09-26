@@ -1,0 +1,62 @@
+enum FoodCategory {
+  BAKERY
+  COOKED_MEAL
+  GROCERIES
+  FRUITS
+  DRINKS
+  OTHER
+}
+
+enum ListingStatus {
+  AVAILABLE
+  EXPIRING_SOON
+  SOLD_OUT
+  EXPIRED
+  UNAVAILABLE
+}
+
+enum WasteRisk {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Listing {
+  id              String        @id @default(uuid())
+  partnerId       String
+  title           String        @db.VarChar(150)
+  description     String?       @db.Text
+  category        FoodCategory  @default(OTHER)
+  originalPrice   Decimal       @db.Decimal(12, 2)
+  discountPrice   Decimal       @db.Decimal(12, 2)
+  quantity        Int           @default(1)
+  unit            String        @default("phần") @db.VarChar(50)
+  expiryAt        DateTime
+  pickupStartTime DateTime
+  pickupEndTime   DateTime
+  pickupAddress   String        @db.VarChar(255)
+  lat             Decimal       @db.Decimal(10, 8)
+  lng             Decimal       @db.Decimal(11, 8)
+  geohash         String        @db.VarChar(12)
+  imageUrls       Json
+  safetyNotes     String?       @db.Text
+  status          ListingStatus @default(AVAILABLE)
+
+  urgencyScore    Float?
+  wasteRisk       WasteRisk?
+
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  orders  Order[]
+
+  @@index([status])
+  @@index([expiryAt])
+  @@index([category])
+  @@index([geohash])
+  @@index([partnerId])
+  @@map("listings")
+}
