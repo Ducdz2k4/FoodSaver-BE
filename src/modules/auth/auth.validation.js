@@ -6,7 +6,7 @@ export const registerSchema = {
     email: z.string().trim().email('Email không đúng định dạng'),
     password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
     phone: z.string().trim().optional(),
-    role: z.enum(['USER', 'PARTNER']).default('USER'),
+    role: z.enum(['USER']).default('USER'),
     address: z.string().optional()
   })
 };
@@ -40,3 +40,4 @@ export const updateProfileSchema = {
     bio: z.string().max(500).optional()
   })
 };
+

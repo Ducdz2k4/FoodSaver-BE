@@ -12,8 +12,27 @@ const SAFE_USER_SELECT = {
   bio: true,
   lastLoginAt: true,
   createdAt: true,
-  updatedAt: true
+  updatedAt: true,
+  partnerProfile: {
+    select: {
+      id: true,
+      businessName: true,
+      verificationStatus: true,
+      businessType: true
+    }
+  }
 };
+
+export function formatUserWithCapability(user) {
+  if (!user) return null;
+  const { partnerProfile, ...rest } = user;
+  return {
+    ...rest,
+    partnerCapability: partnerProfile?.verificationStatus || 'NONE',
+    partnerProfileId: partnerProfile?.id || null,
+    partnerProfile: partnerProfile || null
+  };
+}
 
 export const UserModel = {
   /**
@@ -46,7 +65,7 @@ export const UserModel = {
     ]);
 
     return {
-      users,
+      users: users.map(formatUserWithCapability),
       total,
       page: pageNum,
       limit: limitNum,
@@ -58,10 +77,11 @@ export const UserModel = {
    * Prisma ORM: Find single user by ID (excludes password)
    */
   async findById(id) {
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id },
       select: SAFE_USER_SELECT
     });
+    return formatUserWithCapability(user);
   },
 
   /**
@@ -69,7 +89,17 @@ export const UserModel = {
    */
   async findByIdWithPassword(id) {
     return prisma.user.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        partnerProfile: {
+          select: {
+            id: true,
+            businessName: true,
+            verificationStatus: true,
+            businessType: true
+          }
+        }
+      }
     });
   },
 
@@ -77,10 +107,11 @@ export const UserModel = {
    * Prisma ORM: Find user by email (excludes password)
    */
   async findByEmail(email) {
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
       select: SAFE_USER_SELECT
     });
+    return formatUserWithCapability(user);
   },
 
   /**
@@ -88,7 +119,17 @@ export const UserModel = {
    */
   async findByEmailWithPassword(email) {
     return prisma.user.findUnique({
-      where: { email }
+      where: { email },
+      include: {
+        partnerProfile: {
+          select: {
+            id: true,
+            businessName: true,
+            verificationStatus: true,
+            businessType: true
+          }
+        }
+      }
     });
   },
 
@@ -96,21 +137,23 @@ export const UserModel = {
    * Prisma ORM: Create new user
    */
   async create(data) {
-    return prisma.user.create({
+    const user = await prisma.user.create({
       data,
       select: SAFE_USER_SELECT
     });
+    return formatUserWithCapability(user);
   },
 
   /**
    * Prisma ORM: Update existing user by ID
    */
   async update(id, data) {
-    return prisma.user.update({
+    const user = await prisma.user.update({
       where: { id },
       data,
       select: SAFE_USER_SELECT
     });
+    return formatUserWithCapability(user);
   },
 
   /**
