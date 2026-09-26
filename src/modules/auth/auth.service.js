@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { UserModel } from '../users/user.model.js';
+import { UserModel, formatUserWithCapability } from '../users/user.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../shared/utils/jwt.js';
 import { env } from '../../config/env.js';
@@ -70,9 +70,10 @@ export const AuthService = {
     });
 
     const { password: _, refreshToken: __, ...safeUser } = user;
+    const userWithCapability = formatUserWithCapability(safeUser);
 
     return {
-      user: safeUser,
+      user: userWithCapability,
       accessToken,
       refreshToken,
       expiresIn: env.jwt.expiresIn
@@ -145,7 +146,7 @@ export const AuthService = {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await UserModel.update(userId, {
       password: hashedPassword,
-      refreshToken: null // Force re-login on all devices
+      refreshToken: null
     });
 
     return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại' };
