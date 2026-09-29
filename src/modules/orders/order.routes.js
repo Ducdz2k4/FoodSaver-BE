@@ -5,6 +5,10 @@ import { authenticate } from '../../shared/middlewares/auth.js';
 import { requireVerifiedPartner } from '../../shared/middlewares/partnerGuard.js';
 import {
   createOrderSchema,
+  estimateShippingSchema,
+  bargainShippingSchema,
+  respondBargainSchema,
+  lockOrderSchema,
   cancelOrderSchema,
   updateOrderStatusSchema
 } from './order.validation.js';
@@ -17,7 +21,19 @@ const partnerOrderRouter = Router();
 // ==========================================
 customerOrderRouter.use(authenticate);
 
+// Ước tính phí ship
+customerOrderRouter.post('/estimate-shipping', validate(estimateShippingSchema), OrderController.estimateShipping);
+
+// Tạo đơn
 customerOrderRouter.post('/', validate(createOrderSchema), OrderController.create);
+
+// Khách chém giá phí ship
+customerOrderRouter.post('/:id/bargain', validate(bargainShippingSchema), OrderController.bargainShippingFee);
+
+// Khóa đơn sau 5s
+customerOrderRouter.patch('/:id/lock', validate(lockOrderSchema), OrderController.lockOrder);
+
+// Tra cứu & Hủy
 customerOrderRouter.get('/', OrderController.getMyOrders);
 customerOrderRouter.get('/:id', OrderController.getOrderById);
 customerOrderRouter.patch('/:id/cancel', validate(cancelOrderSchema), OrderController.cancelOrder);
@@ -27,6 +43,10 @@ customerOrderRouter.patch('/:id/cancel', validate(cancelOrderSchema), OrderContr
 // ==========================================
 partnerOrderRouter.use(authenticate, requireVerifiedPartner);
 
+// Quán phản hồi chém giá
+partnerOrderRouter.post('/:id/bargain-respond', validate(respondBargainSchema), OrderController.respondBargain);
+
+// Danh sách & Đổi trạng thái
 partnerOrderRouter.get('/', OrderController.getPartnerOrders);
 partnerOrderRouter.patch('/:id/status', validate(updateOrderStatusSchema), OrderController.updatePartnerOrderStatus);
 
