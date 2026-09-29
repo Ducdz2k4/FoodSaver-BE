@@ -19,5 +19,10 @@ export const env = {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
     apiKey: process.env.CLOUDINARY_API_KEY || '',
     apiSecret: process.env.CLOUDINARY_API_SECRET || ''
+  },
+  jev: {
+    apiKey: process.env.JEV_API_KEY || '',
+    apiUrl: process.env.JEV_API_URL || 'https://api.typesafe.ai/v1/systemone',
+    model: process.env.JEV_MODEL || 'jev-latest'
   }
 };
