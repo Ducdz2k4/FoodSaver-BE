@@ -10,7 +10,8 @@ import {
   respondBargainSchema,
   lockOrderSchema,
   cancelOrderSchema,
-  updateOrderStatusSchema
+  updateOrderStatusSchema,
+  applyCouponSchema
 } from './order.validation.js';
 
 const customerOrderRouter = Router();
@@ -23,6 +24,9 @@ customerOrderRouter.use(authenticate);
 
 // Ước tính phí ship
 customerOrderRouter.post('/estimate-shipping', validate(estimateShippingSchema), OrderController.estimateShipping);
+
+// Xác thực mã giảm giá
+customerOrderRouter.post('/verify-coupon', validate(applyCouponSchema), OrderController.verifyCoupon);
 
 // Tạo đơn
 customerOrderRouter.post('/', validate(createOrderSchema), OrderController.create);

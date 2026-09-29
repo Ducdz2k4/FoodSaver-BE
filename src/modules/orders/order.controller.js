@@ -1,4 +1,4 @@
-import { OrderService } from './order.service.js';
+import { OrderService, verifyCoupon } from './order.service.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 
@@ -7,6 +7,14 @@ export const OrderController = {
     const result = OrderService.estimateShipping(req.body.distanceKm);
     return ApiResponse.success(res, {
       message: 'Ước tính phí giao hàng thành công',
+      data: result
+    });
+  }),
+
+  verifyCoupon: asyncHandler(async (req, res) => {
+    const result = verifyCoupon(req.body.code, req.body.orderTotal);
+    return ApiResponse.success(res, {
+      message: 'Áp dụng mã giảm giá thành công',
       data: result
     });
   }),
