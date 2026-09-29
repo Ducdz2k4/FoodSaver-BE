@@ -76,10 +76,11 @@ export const queryListingsSchema = {
     category: FoodCategoryEnum.optional(),
     lat: z.coerce.number().min(-90).max(90).optional(),
     lng: z.coerce.number().min(-180).max(180).optional(),
-    radiusKm: z.coerce.number().min(0.5).max(50).default(5).optional(),
+    radiusKm: z.coerce.number().min(0.5).max(20, "Bán kính tối đa là 20km").default(5).optional(),
     urgentOnly: z.coerce.boolean().optional(),
     sortBy: z.enum(['EXPIRY', 'PRICE_ASC', 'PRICE_DESC', 'URGENCY', 'NEWEST']).default('EXPIRY').optional(),
     page: z.coerce.number().int().min(1).default(1).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(12).optional()
   })
 };
+

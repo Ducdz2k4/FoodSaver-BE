@@ -2,21 +2,69 @@ import { prisma } from '../../config/database.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 import { emitToUser, emitToPartner } from '../../config/socket.js';
 
+/**
+ * Tính toán phí giao hàng ước tính dựa trên khoảng cách và khung giờ cao điểm
+ * - Tối đa phí ship: 60.000đ
+ * - Tối đa khoảng cách: 20km
+ */
+export function calculateEstimatedShippingFee(distanceKm, date = new Date()) {
+  const distance = Math.min(20, Math.max(0.5, Number(distanceKm) || 1));
+  let fee = 15000; // 2km đầu tiên
+
+  if (distance > 2) {
+    fee += Math.ceil(distance - 2) * 5000; // Mỗi km tiếp theo +5.000đ
+  }
+
+  // Khung giờ cao điểm (11h-13h hoặc 17h-19h): phụ phí +5.000đ
+  const hour = date.getHours();
+  if ((hour >= 11 && hour <= 13) || (hour >= 17 && hour <= 19)) {
+    fee += 5000;
+  }
+
+  return Math.min(60000, fee);
+}
+
 export const OrderService = {
+  /**
+   * Ước tính phí giao hàng
+   */
+  estimateShipping(distanceKm) {
+    const defaultFee = calculateEstimatedShippingFee(distanceKm);
+    return {
+      distanceKm: Number(distanceKm),
+      defaultFee,
+      maxFee: 60000,
+      isPeakHour: (() => {
+        const h = new Date().getHours();
+        return (h >= 11 && h <= 13) || (h >= 17 && h <= 19);
+      })()
+    };
+  },
+
   /**
    * Khách hàng: Tạo đơn đặt giữ món ăn (ACID Transaction trừ tồn kho an toàn)
    */
   async createOrder(userId, data) {
-    const { listingId, quantity, pickupTimeWindow, customerNotes } = data;
+    const {
+      listingId,
+      quantity,
+      fulfillmentType = 'PICKUP',
+      paymentMethod = 'COD',
+      deliveryAddress,
+      deliveryDistance,
+      shippingFee = 0,
+      negotiatedShippingFee,
+      pickupTimeWindow,
+      customerNotes,
+      customerPhone
+    } = data;
 
     // Chạy ACID Transaction
     const newOrder = await prisma.$transaction(async (tx) => {
       // 1. Kiểm tra listing
       const listing = await tx.listing.findUnique({
         where: { id: listingId },
-        include: {
-          partner: true
-        }
+        include: { partner: true }
       });
 
       if (!listing) {
@@ -24,7 +72,7 @@ export const OrderService = {
       }
 
       if (listing.status !== 'AVAILABLE' && listing.status !== 'EXPIRING_SOON') {
-        throw ApiError.badRequest('Món ăn hiện không còn khả dụng để đặt giữ');
+        throw ApiError.badRequest('Món ăn hiện không còn khả dụng để đặt');
       }
 
       if (new Date(listing.expiryAt) <= new Date()) {
@@ -47,10 +95,18 @@ export const OrderService = {
         }
       });
 
-      // 3. Tạo mã đơn hàng duy nhất #FS...
+      // 3. Tính toán phí ship và tổng tiền
+      let finalShippingFee = 0;
+      if (fulfillmentType === 'DELIVERY') {
+        finalShippingFee = Math.min(60000, Math.max(0, Number(shippingFee)));
+      }
+      const itemSubtotal = Number(listing.discountPrice) * quantity;
+      const totalPrice = itemSubtotal + finalShippingFee;
+
+      // 4. Tạo mã đơn hàng duy nhất #FS...
       const orderNumber = `FS${Date.now().toString().slice(-8)}`;
 
-      // 4. Tạo bản ghi đơn hàng
+      // 5. Tạo bản ghi đơn hàng
       const order = await tx.order.create({
         data: {
           orderNumber,
@@ -58,44 +114,47 @@ export const OrderService = {
           customerId: userId,
           quantity,
           unitPrice: listing.discountPrice,
-          totalPrice: Number(listing.discountPrice) * quantity,
+          totalPrice,
           status: 'PENDING',
+          fulfillmentType,
+          paymentMethod,
+          deliveryAddress: deliveryAddress || null,
+          deliveryDistance: deliveryDistance !== undefined ? Number(deliveryDistance) : null,
+          shippingFee: finalShippingFee,
+          negotiatedShippingFee: negotiatedShippingFee !== undefined ? Number(negotiatedShippingFee) : null,
           pickupTimeWindow,
-          customerNotes: customerNotes || null
+          customerNotes: customerNotes || null,
+          customerPhone: customerPhone || null
         },
         include: {
           listing: {
-            include: {
-              partner: true
-            }
+            include: { partner: true }
           },
           customer: {
-            select: {
-              id: true,
-              fullName: true,
-              phone: true
-            }
+            select: { id: true, fullName: true, phone: true }
           }
         }
       });
 
-      // 5. Lưu lịch sử trạng thái
+      // 6. Lưu lịch sử trạng thái
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
           newStatus: 'PENDING',
           changedBy: userId,
-          note: 'Khách hàng khởi tạo đơn đặt giữ'
+          note: `Khách tạo đơn (${fulfillmentType === 'DELIVERY' ? 'Giao hàng' : 'Tự lấy'} - ${paymentMethod})`
         }
       });
 
-      // 6. Tạo thông báo cho đối tác
+      // 7. Tạo thông báo cho đối tác
       await tx.notification.create({
         data: {
           userId: listing.partner.userId,
           type: 'ORDER_STATUS_UPDATED',
           title: `Đơn hàng mới #${orderNumber}!`,
-          message: `Khách hàng vừa đặt ${quantity} phần "${listing.title}". Khung giờ hẹn: ${pickupTimeWindow}.`
+          message: `Khách hàng vừa đặt ${quantity} phần "${listing.title}". Hình thức: ${
+            fulfillmentType === 'DELIVERY' ? 'Giao hàng tận nơi' : 'Tự đến lấy'
+          }.`
         }
       });
 
@@ -109,6 +168,10 @@ export const OrderService = {
       quantity: newOrder.quantity,
       listingTitle: newOrder.listing.title,
       customerName: newOrder.customer?.fullName || 'Khách hàng',
+      fulfillmentType: newOrder.fulfillmentType,
+      paymentMethod: newOrder.paymentMethod,
+      shippingFee: Number(newOrder.shippingFee),
+      totalPrice: Number(newOrder.totalPrice),
       pickupTimeWindow: newOrder.pickupTimeWindow
     });
 
@@ -118,28 +181,182 @@ export const OrderService = {
       quantity: newOrder.quantity,
       listingTitle: newOrder.listing.title,
       customerName: newOrder.customer?.fullName || 'Khách hàng',
+      fulfillmentType: newOrder.fulfillmentType,
+      paymentMethod: newOrder.paymentMethod,
+      shippingFee: Number(newOrder.shippingFee),
+      totalPrice: Number(newOrder.totalPrice),
       pickupTimeWindow: newOrder.pickupTimeWindow
     });
 
-    return {
-      id: newOrder.id,
-      orderNumber: newOrder.orderNumber,
-      listingId: newOrder.listingId,
-      listingTitle: newOrder.listing.title,
-      listingImage: newOrder.listing.imageUrls[0],
-      partnerName: newOrder.listing.partner.businessName,
-      partnerAddress: newOrder.listing.pickupAddress,
-      customerId: newOrder.customerId,
-      customerName: newOrder.customer?.fullName || '',
-      customerPhone: newOrder.customer?.phone || '',
-      quantity: newOrder.quantity,
-      unitPrice: Number(newOrder.unitPrice),
-      totalPrice: Number(newOrder.totalPrice),
-      status: newOrder.status,
-      pickupTimeWindow: newOrder.pickupTimeWindow,
-      customerNotes: newOrder.customerNotes,
-      createdAt: newOrder.createdAt.toISOString()
-    };
+    return formatOrderResponse(newOrder);
+  },
+
+  /**
+   * Khách hàng: Chém giá phí ship (Bargain Shipping Fee)
+   */
+  async bargainShippingFee(userId, orderId, proposedFee) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true
+      }
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Không tìm thấy đơn hàng');
+    }
+
+    if (order.customerId !== userId) {
+      throw ApiError.forbidden('Bạn không phải chủ đơn hàng');
+    }
+
+    if (order.isLocked) {
+      throw ApiError.badRequest('Đơn hàng đã chốt sau 5s, không thể thương lượng phí ship nữa');
+    }
+
+    const cappedFee = Math.min(60000, Math.max(0, Number(proposedFee)));
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        negotiatedShippingFee: cappedFee
+      },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true
+      }
+    });
+
+    // Phát socket sang quán
+    emitToPartner(order.listing.partnerId, 'RECEIVE_BARGAIN_REQUEST', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      customerId: order.customerId,
+      customerName: order.customer?.fullName || 'Khách hàng',
+      defaultFee: Number(order.shippingFee),
+      proposedFee: cappedFee,
+      distanceKm: Number(order.deliveryDistance || 2)
+    });
+
+    return formatOrderResponse(updated);
+  },
+
+  /**
+   * Đối tác: Phản hồi thương lượng phí ship (Chấp nhận / Đưa giá khác / Từ chối)
+   */
+  async respondBargain(userId, orderId, { accepted, finalFee, message }) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true
+      }
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Không tìm thấy đơn hàng');
+    }
+
+    if (order.listing.partner.userId !== userId) {
+      throw ApiError.forbidden('Bạn không có quyền quản lý đơn hàng này');
+    }
+
+    let updatedShippingFee = Number(order.shippingFee);
+
+    if (accepted) {
+      updatedShippingFee = Math.min(
+        60000,
+        Math.max(0, Number(order.negotiatedShippingFee || order.shippingFee))
+      );
+    } else if (finalFee !== undefined) {
+      updatedShippingFee = Math.min(60000, Math.max(0, Number(finalFee)));
+    }
+
+    const itemSubtotal = Number(order.unitPrice) * order.quantity;
+    const newTotalPrice = itemSubtotal + updatedShippingFee;
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        shippingFee: updatedShippingFee,
+        totalPrice: newTotalPrice
+      },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true
+      }
+    });
+
+    // Bắn socket phản hồi tới khách
+    emitToUser(order.customerId, 'RECEIVE_BARGAIN_RESPONSE', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      accepted,
+      finalFee: updatedShippingFee,
+      newTotalPrice,
+      message: message || (accepted ? 'Quán đã đồng ý giá chém của bạn!' : 'Quán đưa ra giá chốt khác')
+    });
+
+    return formatOrderResponse(updated);
+  },
+
+  /**
+   * Khóa đơn hàng sau 5 giây (Tự động cập nhật - Không được hủy ở bước này nữa)
+   */
+  async lockOrder(userId, orderId) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        listing: { include: { partner: true } }
+      }
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Không tìm thấy đơn hàng');
+    }
+
+    if (order.customerId !== userId && order.listing.partner.userId !== userId) {
+      throw ApiError.forbidden('Bạn không có quyền thao tác trên đơn hàng này');
+    }
+
+    if (order.isLocked) {
+      return formatOrderResponse(order);
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        isLocked: true,
+        lockedAt: new Date()
+      },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true
+      }
+    });
+
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId,
+        oldStatus: order.status,
+        newStatus: order.status,
+        changedBy: userId,
+        note: 'Đơn hàng đã khóa sau 5s chốt giá (Không được hủy đơn nữa)'
+      }
+    });
+
+    // Bắn realtime event
+    emitToPartner(order.listing.partnerId, 'ORDER_LOCKED', {
+      orderId: order.id,
+      orderNumber: order.orderNumber
+    });
+    emitToUser(order.customerId, 'ORDER_LOCKED', {
+      orderId: order.id,
+      orderNumber: order.orderNumber
+    });
+
+    return formatOrderResponse(updated);
   },
 
   /**
@@ -159,39 +376,15 @@ export const OrderService = {
         take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: {
-          listing: {
-            include: { partner: true }
-          },
-          customer: {
-            select: { fullName: true, phone: true }
-          }
+          listing: { include: { partner: true } },
+          customer: { select: { fullName: true, phone: true } }
         }
       }),
       prisma.order.count({ where })
     ]);
 
-    const formatted = orders.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      listingId: o.listingId,
-      listingTitle: o.listing.title,
-      listingImage: o.listing.imageUrls[0],
-      partnerName: o.listing.partner.businessName,
-      partnerAddress: o.listing.pickupAddress,
-      customerId: o.customerId,
-      customerName: o.customer?.fullName || '',
-      customerPhone: o.customer?.phone || '',
-      quantity: o.quantity,
-      unitPrice: Number(o.unitPrice),
-      totalPrice: Number(o.totalPrice),
-      status: o.status,
-      pickupTimeWindow: o.pickupTimeWindow,
-      customerNotes: o.customerNotes,
-      createdAt: o.createdAt.toISOString()
-    }));
-
     return {
-      orders: formatted,
+      orders: orders.map(formatOrderResponse),
       total,
       page: pageNum,
       limit: limitNum,
@@ -206,12 +399,8 @@ export const OrderService = {
     const o = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        listing: {
-          include: { partner: true }
-        },
-        customer: {
-          select: { fullName: true, phone: true }
-        }
+        listing: { include: { partner: true } },
+        customer: { select: { fullName: true, phone: true } }
       }
     });
 
@@ -219,35 +408,15 @@ export const OrderService = {
       throw ApiError.notFound('Không tìm thấy đơn hàng');
     }
 
-    // Quyền truy cập: Chủ đơn hàng hoặc Chủ quán của món ăn
     if (o.customerId !== userId && o.listing.partner.userId !== userId) {
       throw ApiError.forbidden('Bạn không có quyền truy cập đơn hàng này');
     }
 
-    return {
-      id: o.id,
-      orderNumber: o.orderNumber,
-      listingId: o.listingId,
-      listingTitle: o.listing.title,
-      listingImage: o.listing.imageUrls[0],
-      partnerName: o.listing.partner.businessName,
-      partnerAddress: o.listing.pickupAddress,
-      customerId: o.customerId,
-      customerName: o.customer?.fullName || '',
-      customerPhone: o.customer?.phone || '',
-      quantity: o.quantity,
-      unitPrice: Number(o.unitPrice),
-      totalPrice: Number(o.totalPrice),
-      status: o.status,
-      pickupTimeWindow: o.pickupTimeWindow,
-      customerNotes: o.customerNotes,
-      cancellationReason: o.cancellationReason,
-      createdAt: o.createdAt.toISOString()
-    };
+    return formatOrderResponse(o);
   },
 
   /**
-   * Khách hàng: Hủy đơn hàng khi còn PENDING
+   * Khách hàng: Hủy đơn hàng (Chỉ cho phép khi chưa khóa isLocked)
    */
   async cancelOrder(userId, orderId, reason) {
     const order = await prisma.order.findUnique({
@@ -263,6 +432,12 @@ export const OrderService = {
       throw ApiError.forbidden('Bạn không phải chủ đơn hàng này');
     }
 
+    if (order.isLocked) {
+      throw ApiError.badRequest(
+        'Đơn hàng đã được chốt và khóa sau 5s xác nhận, bạn không được hủy đơn ở bước này nữa'
+      );
+    }
+
     if (order.status !== 'PENDING') {
       throw ApiError.badRequest('Chỉ có thể hủy đơn hàng khi quán chưa xác nhận chuẩn bị (PENDING)');
     }
@@ -270,7 +445,7 @@ export const OrderService = {
     // Transaction hoàn lại tồn kho
     const updated = await prisma.$transaction(async (tx) => {
       // 1. Hoàn lại số lượng cho listing
-      const updatedListing = await tx.listing.update({
+      await tx.listing.update({
         where: { id: order.listingId },
         data: {
           quantity: { increment: order.quantity },
@@ -284,6 +459,10 @@ export const OrderService = {
         data: {
           status: 'CANCELLED',
           cancellationReason: reason || 'Khách hàng hủy đơn'
+        },
+        include: {
+          listing: { include: { partner: true } },
+          customer: true
         }
       });
 
@@ -308,7 +487,7 @@ export const OrderService = {
       status: 'CANCELLED'
     });
 
-    return updated;
+    return formatOrderResponse(updated);
   },
 
   /**
@@ -343,36 +522,17 @@ export const OrderService = {
         orderBy: { createdAt: 'desc' },
         include: {
           listing: true,
-          customer: {
-            select: { fullName: true, phone: true }
-          }
+          customer: { select: { fullName: true, phone: true } }
         }
       }),
       prisma.order.count({ where })
     ]);
 
-    const formatted = orders.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      listingId: o.listingId,
-      listingTitle: o.listing.title,
-      listingImage: o.listing.imageUrls[0],
-      partnerName: partnerProfile.businessName,
-      partnerAddress: o.listing.pickupAddress,
-      customerId: o.customerId,
-      customerName: o.customer?.fullName || '',
-      customerPhone: o.customer?.phone || '',
-      quantity: o.quantity,
-      unitPrice: Number(o.unitPrice),
-      totalPrice: Number(o.totalPrice),
-      status: o.status,
-      pickupTimeWindow: o.pickupTimeWindow,
-      customerNotes: o.customerNotes,
-      createdAt: o.createdAt.toISOString()
-    }));
-
     return {
-      orders: formatted,
+      orders: orders.map((o) => ({
+        ...formatOrderResponse(o),
+        partnerName: partnerProfile.businessName
+      })),
       total,
       page: pageNum,
       limit: limitNum,
@@ -401,7 +561,6 @@ export const OrderService = {
 
     // Transaction
     const updated = await prisma.$transaction(async (tx) => {
-      // Nếu REJECTED -> hoàn lại số lượng tồn cho listing
       if (status === 'REJECTED') {
         await tx.listing.update({
           where: { id: order.listingId },
@@ -414,7 +573,11 @@ export const OrderService = {
 
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
-        data: { status }
+        data: { status },
+        include: {
+          listing: { include: { partner: true } },
+          customer: true
+        }
       });
 
       await tx.orderStatusHistory.create({
@@ -427,31 +590,47 @@ export const OrderService = {
         }
       });
 
-      // Tạo thông báo in-app cho khách
-      const titleMap = {
-        ACCEPTED: 'Quán đã nhận chuẩn bị đơn!',
-        COMPLETED: 'Đơn hàng đã hoàn tất thành công!',
-        REJECTED: 'Đơn hàng bị từ chối do hết món'
-      };
-      await tx.notification.create({
-        data: {
-          userId: order.customerId,
-          type: 'ORDER_STATUS_UPDATED',
-          title: titleMap[status] || 'Cập nhật đơn hàng',
-          message: `Đơn hàng #${order.orderNumber} cho món "${order.listing.title}" đã được cập nhật sang: ${status}`
-        }
-      });
-
       return updatedOrder;
     });
 
-    // Bắn realtime Socket.IO tới khách hàng
     emitToUser(order.customerId, 'ORDER_STATUS_CHANGED', {
       orderId: order.id,
       orderNumber: order.orderNumber,
       status
     });
 
-    return updated;
+    return formatOrderResponse(updated);
   }
 };
+
+function formatOrderResponse(o) {
+  return {
+    id: o.id,
+    orderNumber: o.orderNumber,
+    listingId: o.listingId,
+    listingTitle: o.listing?.title || '',
+    listingImage: o.listing?.imageUrls?.[0] || '',
+    partnerId: o.listing?.partnerId || '',
+    partnerName: o.listing?.partner?.businessName || '',
+    partnerAddress: o.listing?.pickupAddress || o.listing?.partner?.address || '',
+    customerId: o.customerId,
+    customerName: o.customer?.fullName || '',
+    customerPhone: o.customerPhone || o.customer?.phone || '',
+    quantity: o.quantity,
+    unitPrice: Number(o.unitPrice),
+    shippingFee: Number(o.shippingFee || 0),
+    negotiatedShippingFee: o.negotiatedShippingFee ? Number(o.negotiatedShippingFee) : null,
+    totalPrice: Number(o.totalPrice),
+    status: o.status,
+    fulfillmentType: o.fulfillmentType || 'PICKUP',
+    paymentMethod: o.paymentMethod || 'COD',
+    deliveryAddress: o.deliveryAddress || null,
+    deliveryDistance: o.deliveryDistance ? Number(o.deliveryDistance) : null,
+    isLocked: !!o.isLocked,
+    lockedAt: o.lockedAt ? o.lockedAt.toISOString() : null,
+    pickupTimeWindow: o.pickupTimeWindow,
+    customerNotes: o.customerNotes,
+    cancellationReason: o.cancellationReason,
+    createdAt: o.createdAt.toISOString()
+  };
+}

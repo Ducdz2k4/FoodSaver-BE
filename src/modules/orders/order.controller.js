@@ -3,10 +3,42 @@ import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 
 export const OrderController = {
+  estimateShipping: asyncHandler(async (req, res) => {
+    const result = OrderService.estimateShipping(req.body.distanceKm);
+    return ApiResponse.success(res, {
+      message: 'Ước tính phí giao hàng thành công',
+      data: result
+    });
+  }),
+
   create: asyncHandler(async (req, res) => {
     const result = await OrderService.createOrder(req.user.id, req.body);
     return ApiResponse.created(res, {
-      message: 'Đặt giữ món ăn thành công',
+      message: 'Đặt đơn thành công',
+      data: result
+    });
+  }),
+
+  bargainShippingFee: asyncHandler(async (req, res) => {
+    const result = await OrderService.bargainShippingFee(req.user.id, req.params.id, req.body.proposedFee);
+    return ApiResponse.success(res, {
+      message: 'Gửi yêu cầu chém giá phí ship thành công',
+      data: result
+    });
+  }),
+
+  respondBargain: asyncHandler(async (req, res) => {
+    const result = await OrderService.respondBargain(req.user.id, req.params.id, req.body);
+    return ApiResponse.success(res, {
+      message: 'Phản hồi thương lượng phí ship thành công',
+      data: result
+    });
+  }),
+
+  lockOrder: asyncHandler(async (req, res) => {
+    const result = await OrderService.lockOrder(req.user.id, req.params.id);
+    return ApiResponse.success(res, {
+      message: 'Đơn hàng đã được chốt và khóa sau 5s xác nhận',
       data: result
     });
   }),
