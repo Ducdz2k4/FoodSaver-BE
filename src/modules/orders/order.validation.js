@@ -21,6 +21,7 @@ export const createOrderSchema = {
     deliveryDistance: z.coerce.number().min(0).max(20, 'Khoảng cách giao hàng tối đa là 20km').optional(),
     shippingFee: z.coerce.number().min(0).max(60000, 'Phí giao hàng tối đa là 60.000đ').default(0),
     negotiatedShippingFee: z.coerce.number().min(0).max(60000, 'Phí giao hàng thương lượng tối đa là 60.000đ').optional(),
+    discountCode: z.string().trim().max(50).optional(),
     pickupTimeWindow: z.string().trim().min(1, 'Khung giờ hẹn lấy là bắt buộc'),
     customerNotes: z.string().trim().max(255).optional(),
     customerPhone: z.string().trim().optional()
@@ -74,5 +75,12 @@ export const updateOrderStatusSchema = {
   }),
   body: z.object({
     status: z.enum(['ACCEPTED', 'REJECTED', 'COMPLETED'])
+  })
+};
+
+export const applyCouponSchema = {
+  body: z.object({
+    code: z.string().trim().min(2, 'Mã giảm giá tối thiểu 2 ký tự').max(50),
+    orderTotal: z.coerce.number().min(0)
   })
 };

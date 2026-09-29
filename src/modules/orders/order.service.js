@@ -24,6 +24,35 @@ export function calculateEstimatedShippingFee(distanceKm, date = new Date()) {
   return Math.min(60000, fee);
 }
 
+// Danh sách mã khuyến mãi kích cầu giải cứu thực phẩm FoodSaver
+const ACTIVE_COUPONS = {
+  FOODSAVER10: { type: 'PERCENT', value: 10, maxDiscount: 20000, description: 'Giảm 10% tối đa 20.000đ cho đơn hàng' },
+  FREESHIP: { type: 'SHIPPING', value: 15000, maxDiscount: 15000, description: 'Giảm 15.000đ phí giao hàng' },
+  SAVEGREEN: { type: 'FIXED', value: 10000, maxDiscount: 10000, description: 'Giảm ngay 10.000đ chung tay bảo vệ môi trường' },
+  WELCOME: { type: 'PERCENT', value: 20, maxDiscount: 30000, description: 'Giảm 20% tối đa 30.000đ cho thành viên mới' }
+};
+
+export function verifyCoupon(code, subtotal) {
+  const upperCode = (code || '').trim().toUpperCase();
+  const coupon = ACTIVE_COUPONS[upperCode];
+  if (!coupon) {
+    throw ApiError.badRequest(`Mã giảm giá "${code}" không tồn tại hoặc đã hết hạn.`);
+  }
+
+  let discountAmount = 0;
+  if (coupon.type === 'PERCENT') {
+    discountAmount = Math.min(coupon.maxDiscount, Math.round((Number(subtotal) * coupon.value) / 100));
+  } else if (coupon.type === 'FIXED' || coupon.type === 'SHIPPING') {
+    discountAmount = Math.min(Number(subtotal), coupon.value);
+  }
+
+  return {
+    code: upperCode,
+    discountAmount,
+    description: coupon.description
+  };
+}
+
 export const OrderService = {
   /**
    * Ước tính phí giao hàng
@@ -54,6 +83,7 @@ export const OrderService = {
       deliveryDistance,
       shippingFee = 0,
       negotiatedShippingFee,
+      discountCode,
       pickupTimeWindow,
       customerNotes,
       customerPhone
@@ -101,7 +131,16 @@ export const OrderService = {
         finalShippingFee = Math.min(60000, Math.max(0, Number(shippingFee)));
       }
       const itemSubtotal = Number(listing.discountPrice) * quantity;
-      const totalPrice = itemSubtotal + finalShippingFee;
+      let discountAmount = 0;
+      if (discountCode) {
+        try {
+          const verified = verifyCoupon(discountCode, itemSubtotal);
+          discountAmount = verified.discountAmount;
+        } catch {
+          // invalid coupon, 0 discount
+        }
+      }
+      const totalPrice = Math.max(0, itemSubtotal + finalShippingFee - discountAmount);
 
       // 4. Tạo mã đơn hàng duy nhất #FS...
       const orderNumber = `FS${Date.now().toString().slice(-8)}`;
@@ -122,6 +161,8 @@ export const OrderService = {
           deliveryDistance: deliveryDistance !== undefined ? Number(deliveryDistance) : null,
           shippingFee: finalShippingFee,
           negotiatedShippingFee: negotiatedShippingFee !== undefined ? Number(negotiatedShippingFee) : null,
+          discountCode: discountCode ? discountCode.trim().toUpperCase() : null,
+          discountAmount,
           pickupTimeWindow,
           customerNotes: customerNotes || null,
           customerPhone: customerPhone || null
@@ -620,6 +661,8 @@ function formatOrderResponse(o) {
     unitPrice: Number(o.unitPrice),
     shippingFee: Number(o.shippingFee || 0),
     negotiatedShippingFee: o.negotiatedShippingFee ? Number(o.negotiatedShippingFee) : null,
+    discountCode: o.discountCode || null,
+    discountAmount: Number(o.discountAmount || 0),
     totalPrice: Number(o.totalPrice),
     status: o.status,
     fulfillmentType: o.fulfillmentType || 'PICKUP',
@@ -634,3 +677,4 @@ function formatOrderResponse(o) {
     createdAt: o.createdAt.toISOString()
   };
 }
+
