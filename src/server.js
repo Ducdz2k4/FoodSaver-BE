@@ -8,6 +8,7 @@ process.on('uncaughtException', (error) => {
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
+import { initSocket } from './config/socket.js';
 
 let server;
 
@@ -26,6 +27,9 @@ const startServer = async () => {
     console.log(`❤️  Health Check : http://localhost:${env.port}/health`);
     console.log(`=============================================`);
   });
+
+  // Attach Socket.IO to HTTP server
+  initSocket(server);
 
   const handleShutdown = async (signal) => {
     console.log(`\n[Server] Received ${signal}. Closing HTTP server and database gracefully...`);
