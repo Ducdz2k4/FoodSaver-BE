@@ -9,6 +9,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { initSocket } from './config/socket.js';
+import { startExpirySweepWorker, stopExpirySweepWorker } from './workers/expirySweep.js';
 
 let server;
 
@@ -31,8 +32,12 @@ const startServer = async () => {
   // Attach Socket.IO to HTTP server
   initSocket(server);
 
+  // Khởi động tiến trình quét hạn sử dụng tự động (mỗi 60s)
+  startExpirySweepWorker(60000);
+
   const handleShutdown = async (signal) => {
     console.log(`\n[Server] Received ${signal}. Closing HTTP server and database gracefully...`);
+    stopExpirySweepWorker();
     
     if (server) {
       server.close(async () => {
@@ -59,6 +64,7 @@ const startServer = async () => {
   // 2. Register unhandledRejection handler
   process.on('unhandledRejection', (reason) => {
     console.error('[FATAL] Unhandled Promise Rejection:', reason);
+    stopExpirySweepWorker();
     if (server) {
       server.close(async () => {
         await disconnectDatabase();
