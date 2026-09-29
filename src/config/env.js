@@ -14,5 +14,10 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'super_secret_refresh_jwt_key_foodsaver_2026',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
+  },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || ''
   }
 };
