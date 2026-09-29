@@ -8,6 +8,10 @@ import {
   partnerListingRoutes,
   adminListingRoutes
 } from '../modules/listings/listing.routes.js';
+import {
+  orderRoutes,
+  partnerOrderRoutes
+} from '../modules/orders/order.routes.js';
 
 const router = Router();
 
@@ -22,5 +26,9 @@ router.use('/upload', uploadRoutes);
 router.use('/listings', listingRoutes);
 router.use('/partner/listings', partnerListingRoutes);
 router.use('/admin/listings', adminListingRoutes);
+
+// Order routes (Customer & Partner)
+router.use('/orders', orderRoutes);
+router.use('/partner/orders', partnerOrderRoutes);
 
 export const appRouter = router;
