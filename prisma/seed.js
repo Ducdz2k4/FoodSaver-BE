@@ -4,28 +4,43 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('[Seed] Seeding database with B2C accounts, partners and listings...');
+  console.log('[Seed] Seeding database with 6 comprehensive test accounts...');
   const defaultPassword = await bcrypt.hash('Admin@123456', 10);
 
-  // 1. Admin
+  // 1. Quản trị viên (Admin)
   await prisma.user.upsert({
     where: { email: 'admin@foodsaver.vn' },
-    update: { role: 'ADMIN', status: 'ACTIVE' },
+    update: { role: 'ADMIN', status: 'ACTIVE', password: defaultPassword },
     create: {
       id: 'admin-seed-uuid-0001',
       email: 'admin@foodsaver.vn',
       password: defaultPassword,
-      fullName: 'System Administrator',
+      fullName: 'Quản Trị Viên (Admin)',
       phone: '0901234567',
       role: 'ADMIN',
       status: 'ACTIVE',
     },
   });
 
-  // 2. Customer
-  const customer = await prisma.user.upsert({
+  // 2. Quản trị hệ thống (Sys Admin)
+  await prisma.user.upsert({
+    where: { email: 'sysadmin@foodsaver.vn' },
+    update: { role: 'SYS_ADMIN', status: 'ACTIVE', password: defaultPassword },
+    create: {
+      id: 'sysadmin-seed-uuid-0005',
+      email: 'sysadmin@foodsaver.vn',
+      password: defaultPassword,
+      fullName: 'Quản Trị Hệ Thống (Sys Admin)',
+      phone: '0909998888',
+      role: 'SYS_ADMIN',
+      status: 'ACTIVE',
+    },
+  });
+
+  // 3. Khách hàng thông thường (Customer / User)
+  await prisma.user.upsert({
     where: { email: 'user@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE' },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
     create: {
       id: 'user-seed-uuid-0002',
       email: 'user@foodsaver.vn',
@@ -37,10 +52,10 @@ async function main() {
     },
   });
 
-  // 3. Verified Partner
+  // 4. Đối tác đã xác thực (Verified Partner)
   const partnerUser = await prisma.user.upsert({
     where: { email: 'partner@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE' },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
     create: {
       id: 'partner-seed-uuid-0003',
       email: 'partner@foodsaver.vn',
@@ -72,10 +87,10 @@ async function main() {
     },
   });
 
-  // 4. Pending Partner
+  // 5. Đối tác đang chờ duyệt (Pending Partner)
   const pendingUser = await prisma.user.upsert({
     where: { email: 'pending@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE' },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
     create: {
       id: 'pending-seed-uuid-0004',
       email: 'pending@foodsaver.vn',
@@ -89,7 +104,7 @@ async function main() {
 
   await prisma.partnerProfile.upsert({
     where: { userId: pendingUser.id },
-    update: { verificationStatus: 'PENDING' },
+    update: { verificationStatus: 'PENDING', rejectionReason: null },
     create: {
       id: 'part-prof-0002',
       userId: pendingUser.id,
@@ -107,11 +122,50 @@ async function main() {
     },
   });
 
-  // 5. Initial Listings
-  await prisma.listing.deleteMany({ where: { partnerId: partnerProfile.id } });
+  // 6. Đối tác bị từ chối (Rejected Partner)
+  const rejectedUser = await prisma.user.upsert({
+    where: { email: 'rejected@foodsaver.vn' },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
+    create: {
+      id: 'rejected-seed-uuid-0006',
+      email: 'rejected@foodsaver.vn',
+      password: defaultPassword,
+      fullName: 'Lê Văn Quán Cơm',
+      phone: '0922334455',
+      role: 'USER',
+      status: 'ACTIVE',
+    },
+  });
 
-  await prisma.listing.create({
-    data: {
+  await prisma.partnerProfile.upsert({
+    where: { userId: rejectedUser.id },
+    update: {
+      verificationStatus: 'REJECTED',
+      rejectionReason: 'Ảnh Giấy chứng nhận ATTP đã hết hạn hiệu lực, vui lòng chụp và tải lại bản mới nhất.',
+    },
+    create: {
+      id: 'part-prof-0003',
+      userId: rejectedUser.id,
+      businessName: 'Cơm Niêu Sài Gòn Gourmet',
+      businessLicenseNo: '0318223344',
+      businessLicenseUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800',
+      foodSafetyCertUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800',
+      businessType: 'RESTAURANT',
+      verificationStatus: 'REJECTED',
+      rejectionReason: 'Ảnh Giấy chứng nhận ATTP đã hết hạn hiệu lực, vui lòng chụp và tải lại bản mới nhất.',
+      address: '27 Tú Xương, Phường Võ Thị Sáu, Quận 3, TP.HCM',
+      lat: 10.7815,
+      lng: 106.6852,
+      geohash: 'w4rwt1',
+      phone: '02839391122',
+    },
+  });
+
+  // Initial Sample Listing
+  await prisma.listing.upsert({
+    where: { id: 'list-seed-0001' },
+    update: { quantity: 5, status: 'AVAILABLE' },
+    create: {
       id: 'list-seed-0001',
       partnerId: partnerProfile.id,
       title: 'Túi Thần Kỳ Bánh Mì Pháp & Croissant Dư Trong Ngày',
@@ -138,7 +192,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Seed completed successfully! All accounts and verified partner profile created.');
+  console.log('✅ Seed completed successfully! 6 test accounts created with password: Admin@123456');
 }
 
 main()
