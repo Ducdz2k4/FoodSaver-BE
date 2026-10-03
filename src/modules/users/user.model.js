@@ -8,6 +8,8 @@ const SAFE_USER_SELECT = {
   avatar: true,
   role: true,
   status: true,
+  googleId: true,
+  emailVerified: true,
   address: true,
   bio: true,
   lastLoginAt: true,

@@ -28,7 +28,8 @@ export const authenticate = async (req, _res, next) => {
       throw ApiError.forbidden('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên');
     }
 
-    if (user.status === 'INACTIVE') {
+    const isOtpRoute = req.originalUrl.includes('/auth/verify-otp') || req.originalUrl.includes('/auth/resend-otp');
+    if (user.status === 'INACTIVE' && !isOtpRoute) {
       throw ApiError.forbidden('Tài khoản của bạn chưa được kích hoạt');
     }
 

@@ -7,6 +7,15 @@ export const PartnerService = {
    * Nộp hoặc cập nhật lại hồ sơ đối tác F&B (B2C thuần túy)
    */
   async applyPartner(userId, data) {
+    const applicant = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailVerified: true }
+    });
+
+    if (!applicant?.emailVerified) {
+      throw ApiError.forbidden('Vui lòng xác thực email trước khi gửi hồ sơ đối tác');
+    }
+
     const geohash = ngeohash.encode(data.lat, data.lng, 7);
 
     const existingProfile = await prisma.partnerProfile.findUnique({

@@ -6,8 +6,38 @@ export const AuthController = {
   register: asyncHandler(async (req, res) => {
     const result = await AuthService.register(req.body);
     return ApiResponse.created(res, {
-      message: 'Đăng ký tài khoản thành công',
+      message: 'Đăng ký tài khoản thành công. Vui lòng xác thực email bằng mã OTP.',
       data: result
+    });
+  }),
+
+  verifyOtp: asyncHandler(async (req, res) => {
+    const result = await AuthService.verifyRegisterOtp(req.user.id, req.body.code);
+    return ApiResponse.success(res, {
+      message: result.message,
+      data: result
+    });
+  }),
+
+  resendOtp: asyncHandler(async (req, res) => {
+    const result = await AuthService.resendOtp(req.user.id);
+    return ApiResponse.success(res, {
+      message: result.message
+    });
+  }),
+
+  googleLogin: asyncHandler(async (req, res) => {
+    const result = await AuthService.googleLogin(req.body.idToken);
+    return ApiResponse.success(res, {
+      message: 'Đăng nhập Google thành công',
+      data: result
+    });
+  }),
+
+  setPassword: asyncHandler(async (req, res) => {
+    const result = await AuthService.setPassword(req.user.id, req.body.password);
+    return ApiResponse.success(res, {
+      message: result.message
     });
   }),
 

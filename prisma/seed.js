@@ -10,7 +10,7 @@ async function main() {
   // 1. Quản trị viên (Admin)
   await prisma.user.upsert({
     where: { email: 'admin@foodsaver.vn' },
-    update: { role: 'ADMIN', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'ADMIN', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'admin-seed-uuid-0001',
       email: 'admin@foodsaver.vn',
@@ -19,13 +19,14 @@ async function main() {
       phone: '0901234567',
       role: 'ADMIN',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 
   // 2. Quản trị hệ thống (Sys Admin)
   await prisma.user.upsert({
     where: { email: 'sysadmin@foodsaver.vn' },
-    update: { role: 'SYS_ADMIN', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'SYS_ADMIN', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'sysadmin-seed-uuid-0005',
       email: 'sysadmin@foodsaver.vn',
@@ -34,13 +35,14 @@ async function main() {
       phone: '0909998888',
       role: 'SYS_ADMIN',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 
   // 3. Khách hàng thông thường (Customer / User)
   await prisma.user.upsert({
     where: { email: 'user@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'user-seed-uuid-0002',
       email: 'user@foodsaver.vn',
@@ -49,13 +51,14 @@ async function main() {
       phone: '0912345678',
       role: 'USER',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 
   // 4. Đối tác đã xác thực (Verified Partner)
   const partnerUser = await prisma.user.upsert({
     where: { email: 'partner@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'partner-seed-uuid-0003',
       email: 'partner@foodsaver.vn',
@@ -64,6 +67,7 @@ async function main() {
       phone: '0987654321',
       role: 'USER',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 
@@ -90,7 +94,7 @@ async function main() {
   // 5. Đối tác đang chờ duyệt (Pending Partner)
   const pendingUser = await prisma.user.upsert({
     where: { email: 'pending@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'pending-seed-uuid-0004',
       email: 'pending@foodsaver.vn',
@@ -99,6 +103,7 @@ async function main() {
       phone: '0912345678',
       role: 'USER',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 
@@ -125,7 +130,7 @@ async function main() {
   // 6. Đối tác bị từ chối (Rejected Partner)
   const rejectedUser = await prisma.user.upsert({
     where: { email: 'rejected@foodsaver.vn' },
-    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword },
+    update: { role: 'USER', status: 'ACTIVE', password: defaultPassword, emailVerified: true },
     create: {
       id: 'rejected-seed-uuid-0006',
       email: 'rejected@foodsaver.vn',
@@ -134,6 +139,7 @@ async function main() {
       phone: '0922334455',
       role: 'USER',
       status: 'ACTIVE',
+      emailVerified: true,
     },
   });
 

@@ -6,7 +6,6 @@ export const registerSchema = {
     email: z.string().trim().email('Email không đúng định dạng'),
     password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
     phone: z.string().trim().optional(),
-    role: z.enum(['USER']).default('USER'),
     address: z.string().optional()
   })
 };
@@ -15,6 +14,24 @@ export const loginSchema = {
   body: z.object({
     email: z.string().trim().email('Email không đúng định dạng'),
     password: z.string().min(1, 'Mật khẩu không được để trống')
+  })
+};
+
+export const googleLoginSchema = {
+  body: z.object({
+    idToken: z.string().min(1, 'Google ID Token là bắt buộc')
+  })
+};
+
+export const verifyOtpSchema = {
+  body: z.object({
+    code: z.string().length(6, 'Mã OTP phải gồm 6 chữ số')
+  })
+};
+
+export const setPasswordSchema = {
+  body: z.object({
+    password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự')
   })
 };
 
@@ -40,4 +57,3 @@ export const updateProfileSchema = {
     bio: z.string().max(500).optional()
   })
 };
-
