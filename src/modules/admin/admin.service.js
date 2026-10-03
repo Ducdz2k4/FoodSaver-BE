@@ -46,16 +46,11 @@ export const AdminStatsService = {
       return acc + Math.max(0, (orig - disc) * o.quantity);
     }, 0);
 
-    // Baseline fallback if new DB
-    const displayRevenue = totalRevenue > 0 ? totalRevenue : 45280000;
-    const displayMeals = totalMealsRescued > 0 ? totalMealsRescued : 1240;
-    const displaySaved = totalSavedByUsers > 0 ? totalSavedByUsers : 98500000;
-
     return {
       kpi: {
-        totalRevenue: displayRevenue,
-        totalMealsRescued: displayMeals,
-        totalSavedByUsers: displaySaved,
+        totalRevenue,
+        totalMealsRescued,
+        totalSavedByUsers,
         activeListingsCount: activeListings,
         verifiedPartnersCount: verifiedPartners,
         pendingPartnersCount: pendingPartners,
@@ -85,22 +80,41 @@ export const AdminStatsService = {
       }
     });
 
-    const totalPortions = completedOrders.reduce((acc, o) => acc + o.quantity, 0) || 1250;
+    const totalPortions = completedOrders.reduce((acc, o) => acc + o.quantity, 0);
     const totalKg = Math.round(totalPortions * 0.85); // Trung bình ~0.85kg/phần ăn
     const totalCo2 = Math.round(totalKg * 2.5); // 1kg thức ăn tránh lãng phí = ~2.5kg CO2e
     const totalSaved = completedOrders.reduce((acc, o) => {
       const orig = Number(o.listing.originalPrice || 0);
       const disc = Number(o.listing.discountPrice || 0);
       return acc + Math.max(0, (orig - disc) * o.quantity);
-    }, 0) || 98800000;
+    }, 0);
 
-    const monthlyBreakdown = [
-      { month: "T5/2026", kg: 320, co2: 800, saved: 24500000 },
-      { month: "T6/2026", kg: 480, co2: 1200, saved: 38200000 },
-      { month: "T7/2026", kg: 650, co2: 1625, saved: 52000000 },
-      { month: "T8/2026", kg: 890, co2: 2225, saved: 71400000 },
-      { month: "T9/2026", kg: totalKg, co2: totalCo2, saved: totalSaved },
-    ];
+    const monthlyTotals = new Map();
+    for (const order of completedOrders) {
+      const monthKey = `${order.createdAt.getUTCFullYear()}-${String(order.createdAt.getUTCMonth() + 1).padStart(2, '0')}`;
+      const quantity = order.quantity;
+      const kg = quantity * 0.85;
+      const co2 = kg * 2.5;
+      const saved = Math.max(
+        0,
+        (Number(order.listing.originalPrice || 0) - Number(order.listing.discountPrice || 0)) * quantity
+      );
+      const current = monthlyTotals.get(monthKey) || { kg: 0, co2: 0, saved: 0 };
+      monthlyTotals.set(monthKey, {
+        kg: current.kg + kg,
+        co2: current.co2 + co2,
+        saved: current.saved + saved
+      });
+    }
+
+    const monthlyBreakdown = [...monthlyTotals.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([month, values]) => ({
+        month,
+        kg: Math.round(values.kg),
+        co2: Math.round(values.co2),
+        saved: Math.round(values.saved)
+      }));
 
     return {
       summary: {

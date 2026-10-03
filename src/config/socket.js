@@ -24,7 +24,7 @@ export const initSocket = (httpServer) => {
   // Socket authentication middleware
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (token && typeof token === 'string' && !token.startsWith('mock-')) {
+    if (token && typeof token === 'string') {
       try {
         const decoded = verifyAccessToken(token.replace('Bearer ', ''));
         socket.user = decoded;

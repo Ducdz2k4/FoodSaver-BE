@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js';
+import { ApiError } from './apiError.js';
 
 /**
  * Đánh giá món ăn cận date bằng mô hình AI System One: Jev (TypeSafe AI)
@@ -7,13 +8,7 @@ import { env } from '../../config/env.js';
  */
 export async function evaluateListingWithJev(listing) {
   if (!env.jev.apiKey) {
-    console.warn('[Jev AI] Missing JEV_API_KEY, fallback to default scoring');
-    return {
-      urgencyScore: 0.75,
-      wasteRisk: 'MEDIUM',
-      shouldDeepDiscount: false,
-      confidence: 0.5
-    };
+    throw ApiError.serviceUnavailable('Jev AI chưa được cấu hình. Không thể đánh giá listing lúc này.');
   }
 
   const hoursRemaining = Math.max(
@@ -99,11 +94,6 @@ export async function evaluateListingWithJev(listing) {
     };
   } catch (error) {
     console.error('[Jev AI Execution Error]:', error.message);
-    return {
-      urgencyScore: 0.75,
-      wasteRisk: 'MEDIUM',
-      shouldDeepDiscount: false,
-      confidence: 0.5
-    };
+    throw ApiError.serviceUnavailable('Jev AI không phản hồi. Vui lòng thử lại sau.');
   }
 }
