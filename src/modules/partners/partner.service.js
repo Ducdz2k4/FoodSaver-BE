@@ -106,6 +106,7 @@ export const PartnerService = {
             email: true,
             fullName: true,
             phone: true,
+            avatar: true,
             createdAt: true
           }
         }
