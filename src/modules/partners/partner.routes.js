@@ -14,6 +14,7 @@ router.post('/apply', validate(applyPartnerSchema), PartnerController.apply);
 router.get('/me', PartnerController.getMyProfile);
 
 // Admin: Thẩm định hồ sơ đối tác
+router.get('/', authorize('ADMIN', 'SYS_ADMIN'), PartnerController.getAllPartners);
 router.get('/pending', authorize('ADMIN', 'SYS_ADMIN'), PartnerController.getPendingPartners);
 router.patch('/:id/verify', authorize('ADMIN', 'SYS_ADMIN'), validate(verifyPartnerSchema), PartnerController.verifyPartner);
 

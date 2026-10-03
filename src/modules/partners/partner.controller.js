@@ -27,6 +27,14 @@ export const PartnerController = {
     });
   }),
 
+  getAllPartners: asyncHandler(async (req, res) => {
+    const result = await PartnerService.getPartners({ status: req.query.status });
+    return ApiResponse.success(res, {
+      message: 'Lấy danh sách hồ sơ đối tác thành công',
+      data: result
+    });
+  }),
+
   verifyPartner: asyncHandler(async (req, res) => {
     const result = await PartnerService.verifyPartner(req.params.id, req.user.id, req.body);
     const actionLabel = req.body.status === 'VERIFIED' ? 'Phê duyệt' : 'Từ chối';
