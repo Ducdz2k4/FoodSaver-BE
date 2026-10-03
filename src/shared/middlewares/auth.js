@@ -28,9 +28,15 @@ export const authenticate = async (req, _res, next) => {
       throw ApiError.forbidden('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên');
     }
 
-    const isOtpRoute = req.originalUrl.includes('/auth/verify-otp') || req.originalUrl.includes('/auth/resend-otp');
+    const authPath = req.originalUrl.split('?')[0];
+    const isOtpRoute = authPath.endsWith('/auth/verify-otp') || authPath.endsWith('/auth/resend-otp');
+    const isPasswordSetupRoute = authPath.endsWith('/auth/set-password') || authPath.endsWith('/auth/logout');
     if (user.status === 'INACTIVE' && !isOtpRoute) {
       throw ApiError.forbidden('Tài khoản của bạn chưa được kích hoạt');
+    }
+
+    if (user.passwordSetupRequired && !isPasswordSetupRoute) {
+      throw ApiError.forbidden('Vui lòng thiết lập mật khẩu trước khi tiếp tục sử dụng tài khoản');
     }
 
     // Attach user to request object
@@ -40,7 +46,6 @@ export const authenticate = async (req, _res, next) => {
     next(error);
   }
 };
-
 /**
  * Middleware for Role-Based Access Control (RBAC)
  * @param  {...string} allowedRoles - List of allowed roles (e.g. 'ADMIN', 'PARTNER')

@@ -25,7 +25,7 @@ export const googleLoginSchema = {
 
 export const verifyOtpSchema = {
   body: z.object({
-    code: z.string().length(6, 'Mã OTP phải gồm 6 chữ số')
+    code: z.string().regex(/^\d{6}$/, 'Mã OTP phải gồm đúng 6 chữ số')
   })
 };
 

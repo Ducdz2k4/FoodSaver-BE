@@ -24,7 +24,12 @@ export const AuthService = {
       emailVerified: false
     });
 
-    await OtpService.sendOtp(createdUser.id, createdUser.email);
+    try {
+      await OtpService.sendOtp(createdUser.id, createdUser.email);
+    } catch (error) {
+      await prisma.user.delete({ where: { id: createdUser.id } }).catch(() => {});
+      throw error;
+    }
 
     const tokenPayload = {
       id: createdUser.id,
@@ -79,7 +84,7 @@ export const AuthService = {
       throw ApiError.unauthorized('Token Google không hợp lệ');
     }
 
-    if (!payload || !payload.email) {
+    if (!payload || !payload.email || !payload.email_verified || !payload.sub) {
       throw ApiError.unauthorized('Không thể lấy thông tin từ tài khoản Google');
     }
 
@@ -105,15 +110,28 @@ export const AuthService = {
     });
 
     if (user) {
+      if (user.status === 'BANNED') {
+        throw ApiError.forbidden('Tài khoản của bạn đã bị khóa');
+      }
+
+      if (user.googleId && user.googleId !== googleId) {
+        throw ApiError.conflict('Email này đã được liên kết với một tài khoản Google khác');
+      }
+
       const isFirstGoogleLogin = !user.googleId;
       if (isFirstGoogleLogin) {
         await prisma.user.update({
           where: { id: user.id },
-          data: { googleId, emailVerified: true, status: 'ACTIVE' }
+          data: { googleId, emailVerified: true, status: 'ACTIVE', passwordSetupRequired: true }
         });
+        user.googleId = googleId;
+        user.emailVerified = true;
+        user.status = 'ACTIVE';
       }
 
-      if (isFirstGoogleLogin || !user.password || user.password === '') {
+      if (isFirstGoogleLogin) user.passwordSetupRequired = true;
+
+      if (isFirstGoogleLogin || user.passwordSetupRequired || !user.password || user.password === '') {
         const tokenPayload = { id: user.id, email: user.email, role: user.role };
         const accessToken = generateAccessToken(tokenPayload);
         const refreshToken = generateRefreshToken(tokenPayload);
@@ -127,10 +145,6 @@ export const AuthService = {
           expiresIn: env.jwt.expiresIn,
           requirePassword: true
         };
-      }
-
-      if (user.status === 'BANNED') {
-        throw ApiError.forbidden('Tài khoản của bạn đã bị khóa');
       }
 
       const tokenPayload = { id: user.id, email: user.email, role: user.role };
@@ -157,11 +171,12 @@ export const AuthService = {
         password: '',
         role: 'USER',
         status: 'ACTIVE',
-        emailVerified: true
+        emailVerified: true,
+        passwordSetupRequired: true
       },
       select: {
         id: true, email: true, fullName: true, phone: true, avatar: true,
-        role: true, status: true, address: true, bio: true, lastLoginAt: true,
+        role: true, status: true, address: true, bio: true, lastLoginAt: true, passwordSetupRequired: true,
         createdAt: true, updatedAt: true,
         partnerProfile: {
           select: { id: true, businessName: true, verificationStatus: true, businessType: true }
@@ -189,10 +204,14 @@ export const AuthService = {
       throw ApiError.notFound('Không tìm thấy tài khoản');
     }
 
+    if (!user.googleId || !user.passwordSetupRequired) {
+      throw ApiError.badRequest('Tài khoản này không cần thiết lập mật khẩu Google');
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.user.update({
       where: { id: userId },
-      data: { password: hashedPassword }
+      data: { password: hashedPassword, passwordSetupRequired: false }
     });
 
     return { message: 'Đã thiết lập mật khẩu thành công' };

@@ -23,6 +23,7 @@ model User {
   status        UserStatus  @default(ACTIVE)
   googleId      String?     @unique @db.VarChar(255)
   emailVerified Boolean     @default(false)
+  passwordSetupRequired Boolean     @default(false)
   refreshToken  String?     @db.Text
   lastLoginAt   DateTime?
   createdAt     DateTime    @default(now())
