@@ -377,8 +377,8 @@ export const ListingService = {
         imageUrls: l.imageUrls,
         safetyNotes: l.safetyNotes || '',
         status: l.status,
-        urgencyScore: l.urgencyScore || 0.7,
-        wasteRisk: l.wasteRisk || 'MEDIUM',
+        urgencyScore: l.urgencyScore,
+        wasteRisk: l.wasteRisk,
         createdAt: l.createdAt.toISOString()
       };
     });
@@ -447,8 +447,8 @@ export const ListingService = {
       imageUrls: l.imageUrls,
       safetyNotes: l.safetyNotes || '',
       status: l.status,
-      urgencyScore: l.urgencyScore || 0.7,
-      wasteRisk: l.wasteRisk || 'MEDIUM',
+      urgencyScore: l.urgencyScore,
+      wasteRisk: l.wasteRisk,
       createdAt: l.createdAt.toISOString()
     };
   },
