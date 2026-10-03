@@ -9,5 +9,6 @@ export const HttpStatus = Object.freeze({
   NOT_FOUND: 404,
   CONFLICT: 409,
   UNPROCESSABLE_ENTITY: 422,
+  SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500
 });

@@ -11,29 +11,33 @@ enum UserStatus {
 }
 
 model User {
-  id           String      @id @default(uuid())
-  email        String      @unique @db.VarChar(191)
-  password     String      @db.VarChar(255)
-  fullName     String?     @db.VarChar(100)
-  phone        String?     @db.VarChar(20)
-  avatar       String?     @db.VarChar(255)
-  address      String?     @db.VarChar(255)
-  bio          String?     @db.Text
-  role         Role        @default(USER)
-  status       UserStatus  @default(ACTIVE)
-  refreshToken String?     @db.Text
-  lastLoginAt  DateTime?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  email         String      @unique @db.VarChar(191)
+  password      String      @db.VarChar(255)
+  fullName      String?     @db.VarChar(100)
+  phone         String?     @db.VarChar(20)
+  avatar        String?     @db.VarChar(255)
+  address       String?     @db.VarChar(255)
+  bio           String?     @db.Text
+  role          Role        @default(USER)
+  status        UserStatus  @default(ACTIVE)
+  googleId      String?     @unique @db.VarChar(255)
+  emailVerified Boolean     @default(false)
+  refreshToken  String?     @db.Text
+  lastLoginAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   profile        UserProfile?
   partnerProfile PartnerProfile?
   orders         Order[]
   notifications  Notification[]
   auditLogs      AuditLog[]
+  otpCodes       OtpCode[]
 
   @@index([role])
   @@index([status])
+  @@index([googleId])
   @@map("users")
 }
 
@@ -53,4 +57,18 @@ model UserProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String   @db.VarChar(6)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("otp_codes")
 }

@@ -24,5 +24,14 @@ export const env = {
     apiKey: process.env.JEV_API_KEY || '',
     apiUrl: process.env.JEV_API_URL || 'https://api.typesafe.ai/v1/systemone',
     model: process.env.JEV_MODEL || 'jev-latest'
+  },
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || ''
+  },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || ''
   }
 };

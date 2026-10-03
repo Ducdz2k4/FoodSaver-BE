@@ -33,6 +33,10 @@ export class ApiError extends Error {
     return new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, message, errors);
   }
 
+  static serviceUnavailable(message = 'Service unavailable') {
+    return new ApiError(HttpStatus.SERVICE_UNAVAILABLE, message);
+  }
+
   static internal(message = 'Internal server error') {
     return new ApiError(HttpStatus.INTERNAL_SERVER_ERROR, message, null, false);
   }
