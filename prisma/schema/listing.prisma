@@ -51,7 +51,8 @@ model Listing {
   updatedAt       DateTime      @updatedAt
 
   partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  orders  Order[]
+  orders    Order[]
+  favorites Favorite[]
 
   @@index([status])
   @@index([expiryAt])
