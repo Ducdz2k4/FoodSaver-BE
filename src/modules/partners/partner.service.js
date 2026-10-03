@@ -89,11 +89,16 @@ export const PartnerService = {
   },
 
   /**
-   * Admin: Lấy danh sách hồ sơ đối tác đang chờ thẩm định
+   * Admin: Lấy danh sách hồ sơ đối tác (hỗ trợ filter status)
    */
-  async getPendingPartners() {
+  async getPartners({ status } = {}) {
+    const where = {};
+    if (status && ['PENDING', 'VERIFIED', 'REJECTED'].includes(status)) {
+      where.verificationStatus = status;
+    }
+
     return prisma.partnerProfile.findMany({
-      where: { verificationStatus: 'PENDING' },
+      where,
       include: {
         user: {
           select: {
@@ -110,12 +115,25 @@ export const PartnerService = {
   },
 
   /**
+   * Admin: Lấy danh sách hồ sơ đối tác đang chờ thẩm định
+   */
+  async getPendingPartners() {
+    return this.getPartners({ status: 'PENDING' });
+  },
+
+  /**
    * Admin: Phê duyệt hoặc từ chối hồ sơ đối tác F&B
    */
   async verifyPartner(partnerId, adminId, { status, rejectionReason }) {
-    const existing = await prisma.partnerProfile.findUnique({
+    let existing = await prisma.partnerProfile.findUnique({
       where: { id: partnerId }
     });
+
+    if (!existing) {
+      existing = await prisma.partnerProfile.findUnique({
+        where: { userId: partnerId }
+      });
+    }
 
     if (!existing) {
       throw ApiError.notFound('Không tìm thấy hồ sơ đối tác yêu cầu');
@@ -126,7 +144,7 @@ export const PartnerService = {
     }
 
     const updatedProfile = await prisma.partnerProfile.update({
-      where: { id: partnerId },
+      where: { id: existing.id },
       data: {
         verificationStatus: status,
         rejectionReason: status === 'REJECTED' ? rejectionReason.trim() : null,

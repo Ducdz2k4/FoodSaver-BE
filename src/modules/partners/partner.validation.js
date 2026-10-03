@@ -4,8 +4,8 @@ export const applyPartnerSchema = {
   body: z.object({
     businessName: z.string().trim().min(2, 'Tên doanh nghiệp/quán ăn phải từ 2 ký tự').max(150),
     businessLicenseNo: z.string().trim().min(3, 'Mã số ĐKKD/MST phải từ 3 ký tự').max(100),
-    businessLicenseUrl: z.string().url('Link ảnh GPKD phải là URL hợp lệ').max(500),
-    foodSafetyCertUrl: z.string().url('Link ảnh Chứng nhận ATTP phải là URL hợp lệ').max(500),
+    businessLicenseUrl: z.string().trim().min(1, 'Link ảnh GPKD không được để trống').max(500),
+    foodSafetyCertUrl: z.string().trim().min(1, 'Link ảnh Chứng nhận ATTP không được để trống').max(500),
     businessType: z
       .enum(['CONVENIENCE_STORE', 'BAKERY', 'RESTAURANT', 'SUPERMARKET', 'OTHER'])
       .default('OTHER'),
@@ -18,7 +18,7 @@ export const applyPartnerSchema = {
 
 export const verifyPartnerSchema = {
   params: z.object({
-    id: z.string().uuid('ID đối tác không đúng định dạng UUID')
+    id: z.string().trim().min(1, 'ID đối tác không được để trống')
   }),
   body: z.object({
     status: z.enum(['VERIFIED', 'REJECTED'], {
