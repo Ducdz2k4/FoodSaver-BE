@@ -10,6 +10,7 @@ const SAFE_USER_SELECT = {
   status: true,
   googleId: true,
   emailVerified: true,
+  passwordSetupRequired: true,
   address: true,
   bio: true,
   lastLoginAt: true,

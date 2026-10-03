@@ -17,11 +17,16 @@ export const OtpService = {
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await prisma.otpCode.create({
+    const otpRecord = await prisma.otpCode.create({
       data: { userId, code, expiresAt }
     });
 
-    await sendOtpEmail(email, code);
+    try {
+      await sendOtpEmail(email, code);
+    } catch (error) {
+      await prisma.otpCode.update({ where: { id: otpRecord.id }, data: { used: true } }).catch(() => {});
+      throw error;
+    }
 
     return { message: 'Mã OTP đã được gửi đến email của bạn' };
   },
