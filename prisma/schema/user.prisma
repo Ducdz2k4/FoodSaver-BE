@@ -35,6 +35,7 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   otpCodes       OtpCode[]
+  favorites      Favorite[]
 
   @@index([role])
   @@index([status])

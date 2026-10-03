@@ -13,6 +13,7 @@ import {
   partnerOrderRoutes
 } from '../modules/orders/order.routes.js';
 import { notificationRoutes } from '../modules/notifications/notification.routes.js';
+import { favoriteRoutes } from '../modules/favorites/favorite.routes.js';
 import { adminStatsRoutes } from '../modules/admin/admin.routes.js';
 
 const router = Router();
@@ -35,6 +36,7 @@ router.use('/partner/orders', partnerOrderRoutes);
 
 // Notification routes
 router.use('/notifications', notificationRoutes);
+router.use('/favorites', favoriteRoutes);
 
 // Admin Analytics & ESG Reports
 router.use('/admin', adminStatsRoutes);
