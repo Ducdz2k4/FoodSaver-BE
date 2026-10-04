@@ -1,15 +1,33 @@
 import { z } from 'zod';
 
-const OrderStatusEnum = z.enum([
+export const OrderStatusEnum = z.enum([
   'PENDING',
+  'AWAITING_PAYMENT',
+  'PAID',
   'ACCEPTED',
-  'REJECTED',
+  'PREPARING',
+  'READY',
+  'HANDED_OVER',
   'COMPLETED',
-  'CANCELLED'
+  'CANCELLED',
+  'REJECTED',
+  'EXPIRED',
+  'DISPUTED'
 ]);
 
-const FulfillmentTypeEnum = z.enum(['PICKUP', 'DELIVERY']).default('PICKUP');
-const PaymentMethodEnum = z.enum(['COD', 'SYSTEM_QR']).default('COD');
+export const FulfillmentTypeEnum = z.enum([
+  'PICKUP',
+  'DELIVERY',
+  'STORE_PICKUP',
+  'PARTNER_DELIVERY'
+]).default('PICKUP');
+
+export const PaymentMethodEnum = z.enum([
+  'COD',
+  'SYSTEM_QR',
+  'CASH',
+  'ONLINE'
+]).default('COD');
 
 export const createOrderSchema = {
   body: z.object({
@@ -74,7 +92,53 @@ export const updateOrderStatusSchema = {
     id: z.string().uuid('ID đơn hàng không hợp lệ')
   }),
   body: z.object({
-    status: z.enum(['ACCEPTED', 'REJECTED', 'COMPLETED'])
+    status: z.enum([
+      'ACCEPTED',
+      'PREPARING',
+      'READY',
+      'HANDED_OVER',
+      'COMPLETED',
+      'REJECTED',
+      'CANCELLED'
+    ])
+  })
+};
+
+export const confirmHandoverSchema = {
+  params: z.object({
+    id: z.string().uuid('ID đơn hàng không hợp lệ')
+  }),
+  body: z.object({
+    otp: z.string().trim().length(6, 'Mã OTP lấy hàng gồm 6 số').optional(),
+    note: z.string().trim().max(255).optional()
+  })
+};
+
+export const confirmReceiptSchema = {
+  params: z.object({
+    id: z.string().uuid('ID đơn hàng không hợp lệ')
+  }),
+  body: z.object({
+    note: z.string().trim().max(255).optional()
+  }).optional()
+};
+
+export const proposeAdjustmentSchema = {
+  params: z.object({
+    id: z.string().uuid('ID đơn hàng không hợp lệ')
+  }),
+  body: z.object({
+    newQuantity: z.coerce.number().int().min(1, 'Số lượng mới tối thiểu là 1'),
+    reason: z.string().trim().min(3, 'Lý do điều chỉnh số lượng')
+  })
+};
+
+export const respondAdjustmentSchema = {
+  params: z.object({
+    id: z.string().uuid('ID đơn hàng không hợp lệ')
+  }),
+  body: z.object({
+    accepted: z.boolean()
   })
 };
 
