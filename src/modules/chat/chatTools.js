@@ -128,65 +128,72 @@ export async function generateMealSchedule({ days = 3, budget = 150000, people =
     dbRecipes = [];
   }
 
-  // Pre-categorize DB recipes
-  const breakfasts = dbRecipes.filter(r => r.category === 'an-sang');
-  const mainMeals = dbRecipes.filter(r => r.category === 'com' || r.category === 'bun-pho');
-  const lightMeals = dbRecipes.filter(r => r.category === 'chay' || r.category === 'salad');
-
   const schedule = [];
   const countDays = Math.min(days, 7);
 
   for (let d = 1; d <= countDays; d++) {
     let breakfast, lunch, dinner;
 
-    if (dailyBudget >= 45000) {
-      // Standard to Generous Budget: Full DB Dishes
-      const bItem = (breakfasts.length > 0 ? breakfasts[(d - 1) % breakfasts.length] : null) || { name: 'Bánh mì ốp la pate', cost: 15000, calories: 380 };
-      const lItem = (mainMeals.length > 0 ? mainMeals[(d - 1) % mainMeals.length] : null) || { name: 'Cơm rang dưa bò', cost: 25000, calories: 480 };
-      const dItem = (lightMeals.length > 0 ? lightMeals[(d - 1) % lightMeals.length] : null) || { name: 'Đậu hũ sốt cà chua hành hoa', cost: 16000, calories: 260 };
-
-      breakfast = { name: bItem.name, cost: bItem.cost, calories: bItem.calories };
-      lunch = { name: lItem.name, cost: lItem.cost, calories: lItem.calories };
-      dinner = { name: dItem.name, cost: dItem.cost, calories: dItem.calories };
-    } else if (dailyBudget >= 22000) {
-      // Smart Saving Budget (~22k - 40k/day): Home Cooking & Rescue Deals
-      const bOptions = [
-        { name: 'Bánh mì trứng ốp la', cost: 8000, calories: 320 },
-        { name: 'Xôi đậu phộng vừng dừa', cost: 10000, calories: 350 },
-        { name: 'Bánh mì pate trứng tự làm', cost: 9000, calories: 330 }
+    if (dailyBudget >= 50000) {
+      // 50k/day standard: Breakfast 12-15k, Lunch 20-25k, Dinner 12-15k
+      const bList = [
+        { name: 'Bánh mì ốp la pate', cost: 12000, calories: 380 },
+        { name: 'Xôi xéo mỡ hành ruốc', cost: 15000, calories: 420 },
+        { name: 'Cháo sườn sụn quẩy giòn', cost: 15000, calories: 390 }
       ];
-      const lOptions = [
+      const lList = [
+        { name: 'Cơm rang dưa bò', cost: 22000, calories: 480 },
+        { name: 'Phở bò tái nạm (suất vừa)', cost: 25000, calories: 450 },
+        { name: 'Bún chả giò rau sống', cost: 22000, calories: 460 }
+      ];
+      const dList = [
+        { name: 'Đậu hũ sốt cà chua hành hoa + Cơm', cost: 13000, calories: 350 },
+        { name: 'Canh chua cá lóc + Cơm trắng', cost: 15000, calories: 340 },
+        { name: 'Suất ăn giải cứu đối tác FoodSaver (Giờ vàng)', cost: 13000, calories: 420 }
+      ];
+
+      breakfast = bList[(d - 1) % bList.length];
+      lunch = lList[(d - 1) % lList.length];
+      dinner = dList[(d - 1) % dList.length];
+    } else if (dailyBudget >= 22000) {
+      // 22k - 45k/day: Smart home-cooked saving
+      const bList = [
+        { name: 'Bánh mì trứng ốp la', cost: 8000, calories: 320 },
+        { name: 'Xôi đậu phộng vừng dừa', cost: 8000, calories: 350 },
+        { name: 'Bánh mì kẹp xúc xích trứng', cost: 8000, calories: 330 }
+      ];
+      const lList = [
         { name: 'Đậu hũ sốt cà chua + Cơm trắng', cost: 10000, calories: 420 },
         { name: 'Cơm rang trứng hành hoa + Dưa góp', cost: 10000, calories: 450 },
-        { name: 'Suất cơm trưa đối tác FoodSaver (Giờ vàng)', cost: 12000, calories: 480 }
+        { name: 'Suất cơm trưa giải cứu FoodSaver (Giờ vàng)', cost: 10000, calories: 460 }
       ];
-      const dOptions = [
+      const dList = [
         { name: 'Canh rau cải thịt băm + Trứng luộc', cost: 7000, calories: 350 },
         { name: 'Trứng chiên nước mắm + Rau muống xào tỏi', cost: 7000, calories: 360 },
-        { name: 'Canh đậu hũ rong biển + Cơm trắng', cost: 6500, calories: 330 }
+        { name: 'Canh đậu hũ rong biển + Cơm trắng', cost: 7000, calories: 330 }
       ];
 
-      breakfast = bOptions[(d - 1) % bOptions.length];
-      lunch = lOptions[(d - 1) % lOptions.length];
-      dinner = dOptions[(d - 1) % dOptions.length];
+      breakfast = bList[(d - 1) % bList.length];
+      lunch = lList[(d - 1) % lList.length];
+      dinner = dList[(d - 1) % dList.length];
     } else {
-      // Ultra-economical Bare Saving (~18k/day): Survival Nutrient Density
-      const bOptions = [
+      // ~18k/day bare survival
+      const bList = [
         { name: 'Bánh mì không + 1 quả trứng luộc', cost: 6000, calories: 280 },
         { name: 'Cháo trắng hột vịt muối / ruốc', cost: 5500, calories: 260 }
       ];
-      const lOptions = [
+      const lList = [
         { name: 'Đậu hũ chiên sả + Rau muống luộc + Cơm', cost: 6500, calories: 400 },
         { name: 'Trứng chiên hành + Cơm trắng', cost: 6500, calories: 390 }
       ];
-      const dOptions = [
+      const dList = [
         { name: 'Canh rau cải xanh + Nước mắm tỏi ớt + Cơm', cost: 5500, calories: 320 },
         { name: 'Đậu hũ kho tương + Canh bí đỏ', cost: 5500, calories: 340 }
       ];
 
-      breakfast = bOptions[(d - 1) % bOptions.length];
-      lunch = lOptions[(d - 1) % lOptions.length];
-      dinner = dOptions[(d - 1) % dOptions.length];
+      breakfast = bList[(d - 1) % bList.length];
+      lunch = lList[(d - 1) % lList.length];
+      dinner = dList[(d - 1) % dList.length];
     }
 
     const dayTotalCost = breakfast.cost + lunch.cost + dinner.cost;

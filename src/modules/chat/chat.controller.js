@@ -1,4 +1,4 @@
-import { processChatMessage } from './chat.service.js';
+import { processChatMessage, streamChatPipeline } from './chat.service.js';
 import { getUserFacts, deleteUserFact, clearSessionMemory } from './memory.service.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
@@ -6,7 +6,7 @@ import { ApiError } from '../../shared/utils/apiError.js';
 
 export const chatController = {
   /**
-   * Standard JSON completion
+   * Standard JSON completion (Powered by Groq openai/gpt-oss-120b)
    */
   sendMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
@@ -29,7 +29,7 @@ export const chatController = {
   }),
 
   /**
-   * Server-Sent Events (SSE) Streaming completion
+   * Server-Sent Events (SSE) Real-Time Streaming completion
    */
   streamMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
@@ -46,31 +46,27 @@ export const chatController = {
     res.flushHeaders?.();
 
     try {
-      const result = await processChatMessage({
+      const { pipeline } = await streamChatPipeline({
         message: message.trim(),
         userId,
-        sessionId
+        sessionId,
+        onToken: (tok) => {
+          res.write(`data: ${JSON.stringify({ type: 'token', content: tok })}\n\n`);
+        }
       });
-
-      // Stream words smoothly
-      const words = result.reply.split(' ');
-      for (let i = 0; i < words.length; i++) {
-        const chunk = words[i] + (i === words.length - 1 ? '' : ' ');
-        res.write(`data: ${JSON.stringify({ type: 'token', content: chunk })}\n\n`);
-        await new Promise(r => setTimeout(r, 15));
-      }
 
       // Stream rich cards and suggestions at the end
       res.write(`data: ${JSON.stringify({
         type: 'done',
-        intent: result.intent,
-        richCards: result.richCards,
-        quickSuggestions: result.quickSuggestions,
-        profileContext: result.profileContext
+        intent: pipeline.intent,
+        richCards: pipeline.richCards,
+        quickSuggestions: pipeline.quickSuggestions,
+        profileContext: pipeline.context.profile
       })}\n\n`);
 
       res.end();
     } catch (err) {
+      console.error('[Stream Controller Error]:', err.message);
       res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
       res.end();
     }
