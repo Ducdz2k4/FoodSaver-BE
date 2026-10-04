@@ -133,7 +133,34 @@ export async function prepareChatPipeline({ message, userId, sessionId }) {
   // ══════════════════════════════════════════════════════════════
   // FLOW 1: CALENDAR ACTIONS (Read, Conflict Check, Write to DB)
   // ══════════════════════════════════════════════════════════════
+  const hasProposedMenu = Boolean(getSessionState(effectiveSessionId, 'proposedMenu'));
+  const isAffirmative =
+    norm === 'co' ||
+    norm === 'co nha' ||
+    norm === 'co nhe' ||
+    norm === 'co chu' ||
+    norm === 'ok' ||
+    norm === 'oke' ||
+    norm === 'dong y' ||
+    norm === 'duoc' ||
+    norm === 'duoc nha' ||
+    norm === 'luu di' ||
+    norm === 'luu vao' ||
+    norm === 'luu lai' ||
+    norm === 'ap dung' ||
+    norm === 'ap dung ngay' ||
+    norm === 'yes';
+
+  const isDecline =
+    norm === 'khong' ||
+    norm === 'khong nha' ||
+    norm === 'khong nhe' ||
+    norm === 'thoi' ||
+    norm === 'doi mon' ||
+    norm === 'khong can';
+
   const isCalendarAction =
+    (hasProposedMenu && isAffirmative) ||
     norm.includes('ap dung vao lich') ||
     norm.includes('ap dung lich') ||
     norm.includes('thay the vao lich') ||
@@ -276,6 +303,24 @@ ${appliedSummary}
   }
 
   // ══════════════════════════════════════════════════════════════
+  // FLOW 1.5: DECLINE PROPOSAL / CHANGE DISHES
+  // ══════════════════════════════════════════════════════════════
+  else if (hasProposedMenu && isDecline) {
+    intent = 'DECLINE_PROPOSAL';
+    systemDirective = `[JEV Directives]: ${userPronoun} vừa từ chối lưu thực đơn vào lịch ("${message}").
+- Vui vẻ, nhẹ nhàng xác nhận rằng mình chưa lưu vào lịch.
+- Hỏi ${userPronoun} muốn đổi bữa nào (sáng, trưa hay tối) hoặc có khẩu vị nào khác không (thích ăn cá, thịt heo, món canh thanh mát hay món xào...).
+- Đưa ra các gợi ý thay thế bên dưới để ${userPronoun} dễ chọn.`;
+
+    quickSuggestions = [
+      'Đổi món bữa trưa',
+      'Đổi món bữa tối',
+      'Gợi ý thực đơn món mặn',
+      'Tự chọn món ăn khác'
+    ];
+  }
+
+    // ══════════════════════════════════════════════════════════════
   // FLOW 2: MEAL PLAN & QUESTION ENGINE (Clarification if missing info)
   // ══════════════════════════════════════════════════════════════
   else if (
@@ -378,10 +423,10 @@ ${scheduleSummary}
       };
 
       quickSuggestions = [
-        'Áp dụng vào lịch ăn ngày mai cho t',
-        'Đổi món khác trong thực đơn',
+        'Có, áp dụng vào lịch ăn ngày mai',
+        'Không, đổi món khác',
         'Xem danh sách nguyên liệu đi chợ',
-        'Tìm quán chay giải cứu gần tôi'
+        'Tìm quán ăn đối tác gần tôi'
       ];
     }
   }
