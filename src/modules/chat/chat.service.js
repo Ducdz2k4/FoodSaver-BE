@@ -312,7 +312,7 @@ export async function processChatMessage({ message, userId, sessionId }) {
     replyText = await generateLLMResponse({
       systemPrompt: pipeline.systemPrompt,
       messages: pipeline.llmMessages,
-      maxTokens: 800,
+      maxTokens: 2500,
       temperature: 0.6
     });
   } catch (err) {
@@ -353,7 +353,7 @@ export async function streamChatPipeline({ message, userId, sessionId, onToken }
       systemPrompt: pipeline.systemPrompt,
       messages: pipeline.llmMessages,
       onToken,
-      maxTokens: 800,
+      maxTokens: 2500,
       temperature: 0.6
     });
   } catch (err) {
