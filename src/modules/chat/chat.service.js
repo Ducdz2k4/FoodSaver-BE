@@ -125,7 +125,10 @@ export async function prepareChatPipeline({ message, userId, sessionId }) {
   let richCards = null;
   let quickSuggestions = [];
   let systemDirective = '';
-  let intent = 'QA_INFO';
+
+  // [3] JEV Pre-Router: Intent Classification
+  const routerDecision = await executeJev('pre_router', { message });
+  let intent = routerDecision.decision;
 
   // ══════════════════════════════════════════════════════════════
   // FLOW 1: CALENDAR ACTIONS (Read, Conflict Check, Write to DB)
@@ -424,6 +427,33 @@ ${scheduleSummary}
     ];
   }
 
+    // ══════════════════════════════════════════════════════════════
+  // FLOW 2.5: IMMEDIATE HUNGER / QUICK MEAL RELIEF
+  // ══════════════════════════════════════════════════════════════
+  else if (intent === 'HUNGRY_IMMEDIATE' || norm.includes('doi qua') || norm.includes('doi bung') || norm.includes('doi roi') || norm.includes('them an')) {
+    intent = 'HUNGRY_IMMEDIATE';
+    const deals = await searchRescueDeals({ maxPrice: 40000, limit: 3 });
+    if (deals && deals.length > 0) {
+      richCards = {
+        type: 'deals_list',
+        data: deals
+      };
+    }
+
+    systemDirective = `[JEV Directives]: ${userPronoun} đang kêu đói ("${message}").
+- Hãy chia sẻ cảm xúc ấm áp, đồng cảm ngay lập tức với ${userPronoun}.
+- Gợi ý 2 giải pháp cứu đói cấp tốc:
+  1. Gợi ý 2-3 món nấu/chuẩn bị siêu nhanh tại nhà trong 5-10 phút với nguyên liệu bình dân (như bánh mì ốp la xúc xích, mì xào trứng rau cải, cơm chiên trứng nhanh...).
+  2. Giới thiệu các suất ăn giải cứu giờ vàng từ đối tác FoodSaver gần ${userPronoun} (giá chỉ từ 15k - 30k) nếu ${userPronoun} không muốn vào bếp.
+- Tuyệt đối KHÔNG ép ${userPronoun} ăn chay trừ khi họ yêu cầu.`;
+
+    quickSuggestions = [
+      'Săn deal giải cứu gần tôi',
+      'Món nấu nhanh dưới 10 phút',
+      'Ăn gì dưới 30k'
+    ];
+  }
+
   // ══════════════════════════════════════════════════════════════
   // FLOW 4: RESCUE DEALS SEARCH
   // ══════════════════════════════════════════════════════════════
@@ -473,17 +503,17 @@ ${deals.map((d, i) => `${i + 1}. ${d.title} - ${formatVND(d.discountPrice)} (G�
     ];
   }
 
-  const systemPrompt = `Bạn là Trợ lý Dinh dưỡng & Tài chính FoodSaver – một trợ lý AI thông minh, nhiệt thành và thực tế, vận hành cùng bộ lọc JEV Guard System One.
+  const systemPrompt = `Bạn là Trợ lý Dinh dưỡng & Tài chính FoodSaver – một trợ lý AI thông minh, nhiệt thành và thực tế.
 XƯNG HÔ BẮT BUỘC:
 - Luôn luôn tự xưng là "${botPronoun}".
 - Luôn luôn gọi người dùng là "${userPronoun}".
 - Tuyệt đối giữ đúng cặp xưng hô này trong toàn bộ câu trả lời.
 
-NGUYÊN TẮC TRẢ LỜI & HOÀN THIỆN:
-1. Tất cả số liệu dinh dưỡng, giá tiền món ăn, điểm JEV Guard và suất ăn giải cứu được cung cấp trong chỉ dẫn hệ thống bên dưới là SỰ THẬT DUY NHẤT TỪ DATABASE. Hãy sử dụng chính xác các số liệu này để trả lời.
-2. Trình bày đẹp mắt bằng Markdown (tiêu đề in đậm, bảng biểu có căn cột rõ ràng, danh sách có bullet point, icon trực quan).
-3. YÊU CẦU ĐỘ DÀI: Trả lời súc tích, hoàn chỉnh từ đầu đến cuối (khoảng 250 - 450 từ). Tuyệt đối không bao giờ bỏ dở lửng lơ giữa chừng.
-4. ĐỐI VỚI MÓN CHAY VIỆT NAM: Luôn dùng các món chay thuần Việt tự nhiên (Đậu hũ sốt cà, nấm rơm kho sả ớt, canh chua chay, bún riêu chay, rau củ luộc chấm kho quẹt chay, canh bí đỏ đậu phộng...). Tuyệt đối không chế các món kỳ quặc như "pate động vật thay bằng pate nấm trong bánh mì ốp la".
+NGUYÊN TẮC TRẢ LỜI:
+1. TRẢ LỜI ĐÚNG TRỌNG TÂM: Lắng nghe chính xác mong muốn và cảm xúc của ${userPronoun}. Không gượng ép sang chủ đề không liên quan (ví dụ: ${userPronoun} kêu đói thì gợi ý giải pháp ăn ngay hoặc suất ăn giải cứu quanh đây, tuyệt đối không tự dưng ép ăn chay).
+2. ẨM THỰC CHUẨN VIỆT: Mọi món ăn, mẹo nấu và nguyên liệu luôn theo phong vị cơm nhà Việt Nam. Chỉ gợi ý món chay khi ${userPronoun} có yêu cầu hoặc sở thích ăn chay.
+3. KHÔNG BỊA ĐẶT CÁC CHỈ SỐ LẠ: Tuyệt đối không tự bịa ra các cột hay trường như "Điểm JEV Guard" hay "Suất ăn giải cứu (g)" trong bảng biểu.
+4. TRÌNH BÀY ĐẸP MẮT: Sử dụng Markdown (in đậm tiêu đề, bảng biểu rõ ràng khi cần, icon trực quan, danh sách ngắn gọn).
 5. Tuyệt đối không để lộ các thẻ kỹ thuật như [JEV Directives].
 
 ${systemDirective}`;

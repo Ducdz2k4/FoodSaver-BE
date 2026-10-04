@@ -64,7 +64,7 @@ export async function searchRescueDeals({ maxPrice = 50000, limit = 4, category,
       orderBy: [{ urgencyScore: 'desc' }, { discountPrice: 'asc' }],
       include: {
         partner: {
-          select: { storeName: true, address: true, phone: true }
+          select: { businessName: true, address: true, phone: true }
         }
       }
     });
@@ -75,7 +75,7 @@ export async function searchRescueDeals({ maxPrice = 50000, limit = 4, category,
       originalPrice: l.originalPrice,
       discountPrice: l.discountPrice,
       quantity: l.quantity,
-      partnerName: l.partner?.storeName || 'Đối tác FoodSaver',
+      partnerName: l.partner?.businessName || 'Đối tác FoodSaver',
       address: l.pickupAddress || l.partner?.address || '',
       images: l.imageUrls ? (typeof l.imageUrls === 'string' ? JSON.parse(l.imageUrls) : l.imageUrls) : []
     }));

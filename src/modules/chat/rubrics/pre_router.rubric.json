@@ -11,7 +11,8 @@
     "MEAL_PLAN_BUDGET": "Yêu cầu lên kế hoạch ăn uống, hỏi làm sao ăn với số tiền X trong Y ngày, lập thực đơn tài chính",
     "RESCUE_DEAL_SEARCH": "Tìm kiếm suất ăn cận date, hỏi quán nào gần đây có deal giờ vàng, tìm đồ ăn giảm giá",
     "WRITE_CALENDAR": "Yêu cầu ghi hoặc lưu món ăn vào lịch thực đơn tháng, xếp lịch bữa ăn",
-    "SYSTEM_FEEDBACK": "Người dùng phản hồi thắc mắc bot bị lỗi, hỏi tại sao lặp lời, hỏi bot có bị ngáo không, hỏi có phải mock data không, hoặc bày tỏ không hài lòng về câu trả lời"
+    "SYSTEM_FEEDBACK": "Người dùng phản hồi thắc mắc bot bị lỗi, hỏi tại sao lặp lời, hỏi bot có bị ngáo không, hỏi có phải mock data không, hoặc bày tỏ không hài lòng về câu trả lời",
+    "HUNGRY_IMMEDIATE": "Người dùng kêu đói, thèm ăn, muốn tìm đồ ăn liền hoặc hỏi ăn gì ngay bây giờ"
   },
   "default_choice": "QA_INFO"
 }
