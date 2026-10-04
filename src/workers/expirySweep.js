@@ -1,5 +1,6 @@
 import { prisma } from '../config/database.js';
 import { broadcastEvent } from '../config/socket.js';
+import { InventoryService } from '../modules/inventory/inventory.service.js';
 
 let intervalId = null;
 
@@ -33,15 +34,18 @@ export const runExpirySweep = async () => {
       }
     });
 
-    if (expiredResult.count > 0 || expiringSoonResult.count > 0) {
+    // 3. Quét các đơn đặt giữ món quá hạn (No-Show Sweeper)
+    const reservationSweep = await InventoryService.sweepExpiredReservations();
+
+    if (expiredResult.count > 0 || expiringSoonResult.count > 0 || reservationSweep.sweptCount > 0) {
       console.log(
-        `[Expiry Sweep] 🔄 Swept: ${expiredResult.count} món đã hết hạn (EXPIRED), ${expiringSoonResult.count} món chuyển sang cấp bách (EXPIRING_SOON)`
+        `[Expiry Sweep] 🔄 Swept: ${expiredResult.count} món EXPIRED, ${expiringSoonResult.count} món EXPIRING_SOON, ${reservationSweep.sweptCount} đơn giữ món quá hạn (No-Show) đã giải phóng kho.`
       );
-      // Phát Socket.IO để các client realtime cập nhật ngay mà không cần reload
       broadcastEvent('LISTING_UPDATED', {
         action: 'EXPIRY_SWEEP',
         expiredCount: expiredResult.count,
-        expiringSoonCount: expiringSoonResult.count
+        expiringSoonCount: expiringSoonResult.count,
+        sweptReservations: reservationSweep.sweptCount
       });
     }
   } catch (error) {
@@ -49,18 +53,11 @@ export const runExpirySweep = async () => {
   }
 };
 
-/**
- * Khởi động tiến trình quét tự động định kỳ
- * @param {number} intervalMs - Chu kỳ quét (Mặc định: 60.000ms = 1 phút)
- */
 export const startExpirySweepWorker = (intervalMs = 60000) => {
   if (intervalId) return;
 
   console.log(`⏱️  Auto Expiry Sweep Worker started (Interval: ${intervalMs / 1000}s)`);
-
-  // Chạy ngay lần đầu khi server khởi động
   runExpirySweep();
-
   intervalId = setInterval(runExpirySweep, intervalMs);
 };
 

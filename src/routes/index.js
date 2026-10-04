@@ -19,6 +19,9 @@ import { recipeRoutes } from '../modules/recipes/recipe.routes.js';
 import { mealPlanRoutes } from '../modules/meal-plans/mealPlan.routes.js';
 import { communityRoutes } from '../modules/community/community.routes.js';
 import { chatRoutes } from '../modules/chat/chat.routes.js';
+import { paymentRoutes } from '../modules/payments/payment.routes.js';
+import { ledgerRoutes } from '../modules/ledger/ledger.routes.js';
+import { communicationRoutes } from '../modules/communication/communication.routes.js';
 
 const router = Router();
 
@@ -37,6 +40,13 @@ router.use('/admin/listings', adminListingRoutes);
 // Order routes (Customer & Partner)
 router.use('/orders', orderRoutes);
 router.use('/partner/orders', partnerOrderRoutes);
+
+// Payment & Ledger routes
+router.use('/payments', paymentRoutes);
+router.use('/partner/finance', ledgerRoutes);
+
+// Order Communication (Chat & Call)
+router.use('/communication', communicationRoutes);
 
 // Notification routes
 router.use('/notifications', notificationRoutes);
