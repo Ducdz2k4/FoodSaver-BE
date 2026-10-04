@@ -67,3 +67,28 @@ export const authorize = (...allowedRoles) => {
     next();
   };
 };
+
+/**
+ * Optional Authentication: Attaches req.user if valid token provided, otherwise continues
+ */
+export const optionalAuth = async (req, _res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      if (token) {
+        const decoded = verifyAccessToken(token);
+        if (decoded?.id) {
+          const user = await UserModel.findById(decoded.id);
+          if (user && user.status !== 'BANNED') {
+            req.user = user;
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore invalid/expired tokens in optionalAuth
+    req.user = null;
+  }
+  next();
+};

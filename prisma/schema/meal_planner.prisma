@@ -1,0 +1,73 @@
+model Recipe {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(255)
+  image       String   @db.VarChar(255)
+  calories    Int      @default(0)
+  cookTime    Int      @default(0)
+  servings    Int      @default(1)
+  cost        Float    @default(0)
+  category    String   @db.VarChar(50)
+  tags        Json
+  ingredients Json
+  steps       Json
+  rating      Float    @default(4.8)
+  reviews     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@map("recipes")
+}
+
+model MealPlan {
+  id          String   @id @default(uuid())
+  userId      String?  @db.VarChar(191)
+  date        String   @db.VarChar(20)
+  slot        String   @db.VarChar(20)
+  meal        String   @db.VarChar(255)
+  calories    Int      @default(0)
+  cost        Float    @default(0)
+  ingredients Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, date])
+  @@map("meal_plans")
+}
+
+model CommunityPost {
+  id           String          @id @default(uuid())
+  userId       String?         @db.VarChar(191)
+  authorName   String          @db.VarChar(100)
+  authorAvatar String          @db.VarChar(255)
+  authorBadge  String?         @db.VarChar(100)
+  authorRole   String?         @db.VarChar(255)
+  title        String          @db.VarChar(255)
+  content      String          @db.Text
+  category     String          @db.VarChar(50)
+  likes        Int             @default(0)
+  comments     Int             @default(0)
+  views        Int             @default(0)
+  tags         Json
+  mealPlan     Json?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  postLikes    CommunityLike[]
+
+  @@index([category])
+  @@map("community_posts")
+}
+
+model CommunityLike {
+  id        String        @id @default(uuid())
+  postId    String        @db.VarChar(191)
+  userId    String?       @db.VarChar(191)
+  userIp    String?       @db.VarChar(100)
+  createdAt DateTime      @default(now())
+
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("community_likes")
+}
