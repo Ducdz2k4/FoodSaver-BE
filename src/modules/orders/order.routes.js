@@ -33,6 +33,7 @@ customerOrderRouter.get('/', OrderController.getMyOrders);
 customerOrderRouter.get('/:id', OrderController.getOrderById);
 customerOrderRouter.patch('/:id/cancel', validate(cancelOrderSchema), OrderController.cancelOrder);
 customerOrderRouter.patch('/:id/confirm-receipt', validate(confirmReceiptSchema), OrderController.customerConfirmReceipt);
+customerOrderRouter.post('/:id/adjustment-respond', validate(respondAdjustmentSchema), OrderController.respondAdjustment);
 
 // ==========================================
 // 2. PARTNER ORDER ROUTES
@@ -43,5 +44,7 @@ partnerOrderRouter.post('/:id/bargain-respond', validate(respondBargainSchema), 
 partnerOrderRouter.get('/', OrderController.getPartnerOrders);
 partnerOrderRouter.patch('/:id/status', validate(updateOrderStatusSchema), OrderController.updatePartnerOrderStatus);
 partnerOrderRouter.patch('/:id/handover', validate(confirmHandoverSchema), OrderController.confirmHandover);
+partnerOrderRouter.post('/:id/adjustment-propose', validate(proposeAdjustmentSchema), OrderController.proposeAdjustment);
+partnerOrderRouter.patch('/:id/adjust', validate(proposeAdjustmentSchema), OrderController.adjustOrderQuantity);
 
 export { customerOrderRouter as orderRoutes, partnerOrderRouter as partnerOrderRoutes };
