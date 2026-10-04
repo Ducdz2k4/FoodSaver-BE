@@ -11,243 +11,14 @@ import {
   extractAndSaveMemoryAsync,
   saveUserFact
 } from './memory.service.js';
+import { generateLLMResponse, streamLLMResponse } from './llmClient.js';
 
 function formatVND(n) {
   return (n || 0).toLocaleString('vi-VN') + 'đ';
 }
 
 /**
- * Main Chat Processing Pipeline
- * @param {Object} params - { message, userId, sessionId }
- */
-export async function processChatMessage({ message, userId, sessionId }) {
-  const effectiveSessionId = sessionId || userId || 'anon_' + Date.now();
-
-  // [1] Gateway: Record user message
-  appendSessionTurn(effectiveSessionId, 'user', message);
-
-  // [2] Context Builder (< 30ms)
-  const context = await buildContext({ userId, sessionId: effectiveSessionId, currentMessage: message });
-
-  // Determine user pronouns
-  const userPronoun = context.profile.address_form || 'bạn';
-  const botPronoun = context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
-
-  // [3] JEV Pre-Router (Primitive: choice)
-  const routerDecision = await executeJev('pre_router', { message });
-  const intent = routerDecision.decision;
-
-  console.log(`[Chat Pipeline] Intent: ${intent} (Confidence: ${routerDecision.confidence}) for session: ${effectiveSessionId}`);
-
-  let replyText = '';
-  let richCards = null;
-  let quickSuggestions = [];
-
-  // [4] Route to appropriate handler
-  switch (intent) {
-    case 'SYSTEM_FEEDBACK': {
-      replyText = handleSystemFeedback(message, context);
-      quickSuggestions = [
-        'Ăn 50K/ngày đủ chất không?',
-        'Lên thực đơn 2 ngày với 50.000đ',
-        'Kế hoạch chi tiêu 1.5 triệu/tháng',
-        'Tìm suất ăn giải cứu gần đây'
-      ];
-      break;
-    }
-
-    case 'PROFILE_UPDATE': {
-      replyText = handleProfileUpdate(message, context);
-      quickSuggestions = [
-        'Ăn 50K/ngày đủ chất không?',
-        'Kế hoạch chi tiêu 1.5 triệu/tháng',
-        'Tìm suất ăn giải cứu gần đây'
-      ];
-      break;
-    }
-
-    case 'CHITCHAT': {
-      replyText = handleChitchat(message, context);
-      quickSuggestions = [
-        'Ăn 50K/ngày đủ chất không?',
-        'Kế hoạch chi tiêu 1.5 triệu/tháng',
-        'Có suất ăn giải cứu nào dưới 30k gần đây không?'
-      ];
-      break;
-    }
-
-    case 'RESCUE_DEAL_SEARCH': {
-      const deals = await searchRescueDeals({ maxPrice: 40000, limit: 4 });
-      replyText = `Dưới đây là các suất ăn giải cứu cận date đang có giá tốt nhất từ các quán đối tác lân cận:\n\n`;
-      if (deals.length === 0) {
-        replyText += `Hiện chưa có món cận date nào dưới 40.000đ trong bán kính gần. ${userPronoun} có thể mở mục Bản đồ để xem thêm các khu vực khác nhé!`;
-      } else {
-        deals.forEach((d, idx) => {
-          replyText += `${idx + 1}. **${d.title}**\n   - Giá giải cứu: **${formatVND(d.discountPrice)}** (Giá gốc: ~~${formatVND(d.originalPrice)}~~)\n   - Quán: *${d.partnerName}* · ${d.address}\n\n`;
-        });
-        replyText += `💡 ${userPronoun} có thể đặt giữ món ngay hoặc mở Bản đồ FoodSaver để kiểm tra khoảng cách và ghé lấy.`;
-      }
-      richCards = {
-        type: 'deals_list',
-        data: deals
-      };
-      quickSuggestions = [
-        'Mở Radar bản đồ',
-        'Lên thực đơn với các món này',
-        'Xem thêm quán khác'
-      ];
-      break;
-    }
-
-    case 'MEAL_PLAN_BUDGET': {
-      // Step A: Parse budget & days from message accurately
-      const parsed = parseBudgetAndDays(message);
-      const days = parsed.days;
-      const budget = parsed.budget;
-      const people = parsed.people;
-      const dailyBudget = Math.floor(budget / days / people);
-
-      // Step B: Tool estimate_min_cost
-      const estimate = await estimateMinCost({ days, people, targetBudget: budget });
-
-      // Step C: JEV Guard Feasibility Rubric
-      const feasibility = await executeJev('feasibility', {
-        days,
-        targetBudget: budget,
-        people
-      });
-
-      console.log(`[JEV Feasibility Guard] Result: ${feasibility.decision} (Score: ${feasibility.score}), Days: ${days}, Budget: ${budget}, Daily: ${dailyBudget}`);
-
-      // Step D: Branching based on JEV Guard decision
-      if (feasibility.decision === 'PASS') {
-        // High Feasibility (PASS): Generate Schedule
-        const schedule = await generateMealSchedule({ days, budget, people });
-
-        if (days === 1) {
-          replyText = `**Hoàn toàn khả thi và đủ chất! (Điểm JEV: ${feasibility.score}/1.0 - Đạt chuẩn)**\n\n`;
-          replyText += `Với mức chi tiêu **${formatVND(budget)}/ngày** cho ${people} người, ${userPronoun} có thể phân bổ bữa ăn đầy đủ dinh dưỡng như sau:\n\n`;
-          replyText += `- 🌅 **Bữa sáng (~10.000đ - 12.000đ):** Bánh mì ốp la pate hoặc Xôi xéo mỡ hành ruốc\n`;
-          replyText += `- ☀️ **Bữa trưa (~20.000đ - 22.000đ):** Cơm sườn nướng / Cơm rang dưa bò + Canh rau xanh\n`;
-          replyText += `- 🌙 **Bữa tối (~15.000đ - 18.000đ):** Canh chua cá lóc / Đậu hũ sốt cà chua + Cơm trắng\n`;
-          replyText += `- 🍎 **Snack (~3.000đ - 5.000đ):** 1 quả chuối tươi hoặc sữa chua\n\n`;
-          replyText += `💡 **Mẹo vàng cho ${userPronoun}:** Mua nguyên liệu theo tuần hoặc săn các suất ăn giờ vàng FoodSaver để tiết kiệm thêm 20-30% tiền chợ!`;
-        } else {
-          replyText = `**Thực đơn tối ưu ${days} ngày với ngân sách ${formatVND(budget)} (Bình quân ~${formatVND(dailyBudget)}/ngày/người):**\n\n`;
-          replyText += `✅ **Đánh giá JEV Guard:** Đạt chuẩn dinh dưỡng (Điểm khả thi: ${feasibility.score}/1.0).\n\n`;
-
-          schedule.schedule.slice(0, Math.min(days, 5)).forEach(s => {
-            replyText += `📅 **Ngày ${s.day}:**\n`;
-            replyText += `- 🌅 Sáng: ${s.slots.breakfast.name} (~${formatVND(s.slots.breakfast.cost)})\n`;
-            replyText += `- ☀️ Trưa: ${s.slots.lunch.name} (~${formatVND(s.slots.lunch.cost)})\n`;
-            replyText += `- 🌙 Tối: ${s.slots.dinner.name} (~${formatVND(s.slots.dinner.cost)})\n`;
-            replyText += `  *Tổng ngày:* ${formatVND(s.dayTotalCost)}\n\n`;
-          });
-
-          if (days > 5) {
-            replyText += `*(Các ngày tiếp theo được luân phiên món để không bị ngán và cân bằng dinh dưỡng)*\n\n`;
-          }
-
-          replyText += `💡 ${userPronoun} có thể mở mục **Lịch ăn tháng** để đồng bộ kế hoạch này và nhận danh sách đi chợ tự động.`;
-        }
-
-        richCards = {
-          type: 'schedule_preview',
-          data: schedule
-        };
-
-        quickSuggestions = [
-          'Đồng bộ vào Lịch ăn tháng',
-          'Tìm nguyên liệu rẻ gần tôi',
-          'Săn deal giải cứu tối nay'
-        ];
-      } else {
-        // Infeasible (NEGOTIATE or IMPOSSIBLE)
-        const realisticDays = Math.max(1, Math.floor(budget / (18000 * people)));
-        const recommendedMinTotal = 18000 * days * people;
-        const balancedTotal = 35000 * days * people;
-
-        replyText = `**Phân tích tính khả thi từ FoodSaver AI & JEV Guard:**\n\n`;
-        replyText += `Với mức ngân sách **${formatVND(budget)}** cho **${days} ngày** (${people} người), mức chi bình quân chỉ đạt **~${formatVND(dailyBudget)}/ngày**.\n\n`;
-        replyText += `⚠️ **Đánh giá khả thi (Điểm JEV: ${feasibility.score}/1.0):**\n`;
-        replyText += `- Để nạp đủ năng lượng tối thiểu (1.500 - 1.800 kcal/ngày), chi phí nấu ăn tại gia cơ bản (gạo, trứng, rau xanh, đậu hũ) hiện tại cần tối thiểu **~18.000đ/ngày**.\n`;
-        replyText += `- Mức ngân sách hiện tại không đủ để duy trì sức khỏe trong suốt ${days} ngày nếu không có hỗ trợ khác.\n\n`;
-        replyText += `💡 **FoodSaver đề xuất 3 phương án khả thi thực tế:**\n\n`;
-        replyText += `1. **Rút ngắn số ngày theo ngân sách:** Dùng ${formatVND(budget)} để ăn uống đầy đủ dinh dưỡng trong **~${realisticDays} ngày** (~18.000đ/ngày).\n`;
-        replyText += `2. **Điều chỉnh ngân sách cho ${days} ngày:**\n   - Mức tối giản: **~${formatVND(recommendedMinTotal)}** (~18.000đ/ngày).\n   - Mức cân đối có thịt cá: **~${formatVND(balancedTotal)}** (~35.000đ/ngày).\n`;
-        replyText += `3. **Săn suất ăn giải cứu cận date:** Kết hợp mua các deal giờ vàng từ **10.000đ - 18.000đ** từ các đối tác FoodSaver gần ${userPronoun} để vừa tiết kiệm vừa không tốn tiền gas/dầu ăn.`;
-
-        richCards = {
-          type: 'feasibility_negotiation',
-          data: {
-            requestedBudget: budget,
-            days,
-            people,
-            score: feasibility.score,
-            realisticDays,
-            recommendedMinTotal,
-            balancedTotal,
-          }
-        };
-
-        quickSuggestions = [
-          `Áp dụng kế hoạch ${realisticDays} ngày với ${formatVND(budget)}`,
-          `Lên thực đơn 30 ngày với ${formatVND(recommendedMinTotal)}`,
-          'Tìm suất ăn cận date gần tôi'
-        ];
-      }
-      break;
-    }
-
-    default: {
-      replyText = handleGeneralQA(message, context);
-      quickSuggestions = [
-        'Lập kế hoạch ăn uống',
-        'Tìm chợ giá rẻ ở TP.HCM',
-        'Cách bảo quản thực phẩm cận date'
-      ];
-      break;
-    }
-  }
-
-  // [5] Question Engine: Append subtle question only if field is truly missing and not in feedback/profile flow
-  if (
-    intent !== 'PROFILE_UPDATE' &&
-    intent !== 'CHITCHAT' &&
-    intent !== 'SYSTEM_FEEDBACK' &&
-    context.suggestedQuestion &&
-    !context.profile[context.suggestedQuestion.key] &&
-    context.profile.address_form !== 'Anh' &&
-    context.profile.address_form !== 'Chị' &&
-    context.profile.address_form !== 'Bạn' &&
-    Math.random() > 0.75
-  ) {
-    replyText += `\n\n💬 *Gợi ý nhỏ: ${context.suggestedQuestion.ask_prompt}*`;
-  }
-
-  // [6] Record assistant turn
-  appendSessionTurn(effectiveSessionId, 'assistant', replyText);
-
-  // [7] Async Memory Extractor (non-blocking, runs in background)
-  setImmediate(() => {
-    extractAndSaveMemoryAsync({
-      userId,
-      sessionId: effectiveSessionId,
-      message
-    }).catch(err => console.warn('[Memory Extractor Async Error]:', err.message));
-  });
-
-  return {
-    reply: replyText,
-    intent,
-    richCards,
-    quickSuggestions,
-    profileContext: context.profile
-  };
-}
-
-/**
- * Parses user input for budget amounts and duration days accurately with accent stripping
+ * Parses user input for budget amounts and duration days accurately
  */
 export function parseBudgetAndDays(text) {
   const norm = stripVN(text);
@@ -263,7 +34,6 @@ export function parseBudgetAndDays(text) {
   } else if (norm.includes('1 thang') || norm.includes('mot thang') || norm.includes('/thang')) {
     days = 30;
   } else {
-    // Regex for: '2 ngay', '5 ngay', '7 ngay', '14 ngay', '30 ngay'
     const daysMatch = norm.match(/(\d+)\s*(?:ngay|day)/);
     if (daysMatch) {
       days = parseInt(daysMatch[1], 10);
@@ -274,7 +44,7 @@ export function parseBudgetAndDays(text) {
   const peopleMatch = norm.match(/(\d+)\s*(?:nguoi|ban|khau phan)/);
   if (peopleMatch) people = parseInt(peopleMatch[1], 10);
 
-  // 3. Budget detection (e.g. 50k, 100k, 1.5tr, 1.5 trieu, 540.000d, 50000)
+  // 3. Budget detection
   const trMatch = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:tr|trieu)/);
   const kMatch = norm.match(/(\d+(?:[.,]\d+)?)\s*(?:k|nghin|ngan)/);
   const rawVndMatch = norm.match(/(\d{1,3}(?:\.\d{3})+|\d{4,9})\s*(?:d|vnd|dong)?/);
@@ -301,81 +71,311 @@ export function parseBudgetAndDays(text) {
   return { days, budget, people };
 }
 
-function handleSystemFeedback(message, context) {
-  const userPronoun = context.profile.address_form || 'bạn';
-  const botPronoun = context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
+/**
+ * Prepares Context, JEV Pre-Router, Tools & LLM Prompt
+ */
+export async function prepareChatPipeline({ message, userId, sessionId }) {
+  const effectiveSessionId = sessionId || userId || 'anon_' + Date.now();
 
-  let text = `Dạ rất xin lỗi ${userPronoun}! Vừa rồi tiến trình backend chưa kịp nạp lại bản sửa lỗi bóc tách ngữ nghĩa (Regex nhận diện từ 'ngày' có dấu tiếng Việt), khiến hệ thống hiểu nhầm các kế hoạch 1 ngày, 2 ngày, 5 ngày thành chu kỳ 30 ngày dẫn đến phản hồi bị lặp lại và báo 'không đủ ngân sách'.\n\n`;
-  text += `**${botPronoun.charAt(0).toUpperCase() + botPronoun.slice(1)} xin khẳng định dữ liệu FoodSaver là thật 100%:**\n`;
-  text += `- 🍳 **16 công thức món ăn & lượng calo:** Được truy xuất trực tiếp từ cơ sở dữ liệu hệ thống (Bánh mì ốp la, Cơm tấm, Bún bò Huế, Đậu hũ sốt cà... và chi phí đi chợ thực tế).\n`;
-  text += `- 🏪 **11 suất ăn giải cứu cận date:** Lấy trực tiếp từ các quán đối tác liên kết đang có deal giờ vàng lân cận.\n`;
-  text += `- ⚖️ **Bộ lọc JEV Guard:** Đánh giá tính khả thi theo chi phí dinh dưỡng thực tế (ngưỡng tối thiểu ~18.000đ/ngày).\n\n`;
-  text += `${botPronoun.charAt(0).toUpperCase() + botPronoun.slice(1)} đã ghi nhớ cách xưng hô và nạp lại hệ thống rồi ạ. Giờ ${userPronoun} có thể chọn hoặc nhắn lại:\n`;
-  text += `- *Ăn 50K/ngày đủ chất không?*\n`;
-  text += `- *Lên thực đơn 2 ngày với 50.000đ*\n`;
-  text += `- *Kế hoạch chi tiêu 1.5 triệu/tháng*\n\n`;
-  text += `${botPronoun.charAt(0).toUpperCase() + botPronoun.slice(1)} sẽ tính toán và xuất thực đơn chi tiết ngay cho ${userPronoun}!`;
+  // [1] Gateway: Record user turn
+  appendSessionTurn(effectiveSessionId, 'user', message);
 
-  return text;
+  // [2] Context Builder (< 30ms)
+  const context = await buildContext({ userId, sessionId: effectiveSessionId, currentMessage: message });
+
+  // Pronouns
+  let userPronoun = context.profile.address_form || 'bạn';
+  let botPronoun = context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
+
+  // [3] JEV Pre-Router (Primitive: choice)
+  const routerDecision = await executeJev('pre_router', { message });
+  const intent = routerDecision.decision;
+
+  console.log(`[Chat Pipeline] Intent: ${intent} (Confidence: ${routerDecision.confidence}) for session: ${effectiveSessionId}`);
+
+  let richCards = null;
+  let quickSuggestions = [];
+  let systemDirective = '';
+
+  switch (intent) {
+    case 'SYSTEM_FEEDBACK': {
+      systemDirective = `[JEV System Explanation Directives]:
+- Người dùng đang hỏi về lỗi lặp lại, hoặc hỏi có phải dữ liệu mock hay bot bị ngáo không.
+- Giải thích: Vừa rồi tiến trình backend chưa kịp nạp lại bản sửa lỗi bóc tách ngữ nghĩa tiếng Việt (Regex từ 'ngày' có dấu huyền khiến mọi số ngày bị fallback về 30 ngày), dẫn đến bot liên tục báo không đủ tiền cho 30 ngày và lặp lại đề xuất.
+- Khẳng định 100% dữ liệu của FoodSaver là THẬT: 16 công thức món ăn & calo trong DB, 11 suất ăn giải cứu cận date từ đối tác FoodSaver lân cận, và bộ lọc JEV Guard tính toán dựa trên chi phí dinh dưỡng thực tế ở Việt Nam. Đầu ra ngôn ngữ hiện tại được tạo trực tiếp bởi mô hình LLM openai/gpt-oss-120b.
+- Xưng hô đúng '${botPronoun}' và gọi '${userPronoun}'. Hãy xin lỗi nhẹ nhàng, vui vẻ và mời ${userPronoun} thử lại các câu hỏi ngân sách thực tế.`;
+      quickSuggestions = [
+        'Ăn 50K/ngày đủ chất không?',
+        'Lên thực đơn 2 ngày với 50.000đ',
+        'Kế hoạch chi tiêu 1.5 triệu/tháng',
+        'Tìm suất ăn giải cứu gần đây'
+      ];
+      break;
+    }
+
+    case 'PROFILE_UPDATE': {
+      const norm = stripVN(message);
+      if (norm.includes('anh em') || norm.includes('anh - em') || norm.includes('goi anh') || norm.includes('xung ho anh')) {
+        userPronoun = 'Anh';
+        botPronoun = 'em';
+      } else if (norm.includes('chi em') || norm.includes('chi - em') || norm.includes('goi chi') || norm.includes('xung ho chi')) {
+        userPronoun = 'Chị';
+        botPronoun = 'em';
+      } else if (norm.includes('ban minh') || norm.includes('ban - minh') || norm.includes('goi ban') || norm.includes('xung ho ban')) {
+        userPronoun = 'Bạn';
+        botPronoun = 'mình';
+      } else if (norm.includes('em anh') || norm.includes('em - anh')) {
+        userPronoun = 'Em';
+        botPronoun = 'anh';
+      }
+
+      saveUserFact(context.userId, 'address_form', userPronoun);
+      saveUserFact(context.userId, 'bot_form', botPronoun);
+      context.profile.address_form = userPronoun;
+      context.profile.bot_form = botPronoun;
+
+      if (norm.includes('di ung') || norm.includes('kieng an')) {
+        saveUserFact(context.userId, 'allergies', message);
+      }
+
+      systemDirective = `[JEV Profile Update Directives]:
+- Người dùng vừa cung cấp cách xưng hô: Gọi người dùng là "${userPronoun}" và xưng là "${botPronoun}".
+- Hãy xác nhận tự nhiên, ấm áp rằng ${botPronoun} đã ghi nhớ cách xưng hô này và sẵn sàng hỗ trợ ${userPronoun} lên thực đơn chi tiêu hoặc tìm deal giải cứu.`;
+      quickSuggestions = [
+        'Ăn 50K/ngày đủ chất không?',
+        'Kế hoạch chi tiêu 1.5 triệu/tháng',
+        'Tìm suất ăn giải cứu gần đây'
+      ];
+      break;
+    }
+
+    case 'RESCUE_DEAL_SEARCH': {
+      const deals = await searchRescueDeals({ maxPrice: 40000, limit: 4 });
+      richCards = {
+        type: 'deals_list',
+        data: deals
+      };
+      systemDirective = `[JEV Rescue Deals Search Directives]:
+- Kết quả tìm kiếm từ đối tác FoodSaver (${deals.length} món tìm thấy):
+${deals.map((d, i) => `${i + 1}. ${d.title} - Giá giảm: ${formatVND(d.discountPrice)} (Giá gốc: ${formatVND(d.originalPrice)}) - Quán: ${d.partnerName} (${d.address})`).join('\n')}
+- Hãy giới thiệu các suất ăn giải cứu này cho ${userPronoun}, nêu bật giá tiết kiệm và gợi ý mở Bản đồ FoodSaver để đến lấy.`;
+      quickSuggestions = [
+        'Xem trên Bản đồ FoodSaver',
+        'Lên thực đơn ăn 3 ngày',
+        'Mẹo bảo quản thực phẩm cận date'
+      ];
+      break;
+    }
+
+    case 'MEAL_PLAN_BUDGET': {
+      const parsed = parseBudgetAndDays(message);
+      const days = parsed.days;
+      const budget = parsed.budget;
+      const people = parsed.people;
+      const dailyBudget = Math.floor(budget / days / people);
+
+      const estimate = await estimateMinCost({ days, people, targetBudget: budget });
+      const feasibility = await executeJev('feasibility', {
+        days,
+        targetBudget: budget,
+        people
+      });
+
+      console.log(`[JEV Feasibility Guard] Result: ${feasibility.decision} (Score: ${feasibility.score}), Days: ${days}, Budget: ${budget}, Daily: ${dailyBudget}`);
+
+      if (feasibility.decision === 'PASS') {
+        const schedule = await generateMealSchedule({ days, budget, people });
+        richCards = {
+          type: 'schedule_preview',
+          data: schedule
+        };
+
+        const scheduleSummary = schedule.schedule.slice(0, 5).map(s =>
+          `Ngày ${s.day}: Sáng: ${s.slots.breakfast.name} (~${formatVND(s.slots.breakfast.cost)}, ${s.slots.breakfast.calories} kcal) | Trưa: ${s.slots.lunch.name} (~${formatVND(s.slots.lunch.cost)}, ${s.slots.lunch.calories} kcal) | Tối: ${s.slots.dinner.name} (~${formatVND(s.slots.dinner.cost)}, ${s.slots.dinner.calories} kcal) -> Tổng ngày: ~${formatVND(s.dayTotalCost)}`
+        ).join('\n');
+
+        systemDirective = `[JEV Guard & Schedule Directives]:
+- Trạng thái JEV Guard: PASS (Điểm khả thi: ${feasibility.score}/1.0 - Đạt chuẩn dinh dưỡng).
+- Kế hoạch: Ngân sách ${formatVND(budget)} cho ${days} ngày (${people} người) => Bình quân ~${formatVND(dailyBudget)}/ngày/người.
+- Dữ liệu thực đơn chi tiết từ DB & bếp gia đình:
+${scheduleSummary}
+- Hướng dẫn: Trình bày thực đơn rõ ràng, đẹp mắt bằng Markdown. Nêu rõ calo và giá từng món. Động viên ${userPronoun} mở mục "Lịch ăn tháng" để áp dụng và đi chợ.`;
+
+        quickSuggestions = [
+          'Đồng bộ vào Lịch ăn tháng',
+          'Tìm nguyên liệu rẻ gần tôi',
+          'Săn deal giải cứu tối nay'
+        ];
+      } else {
+        const realisticDays = Math.max(1, Math.floor(budget / (18000 * people)));
+        const recommendedMinTotal = 18000 * days * people;
+        const balancedTotal = 35000 * days * people;
+
+        richCards = {
+          type: 'feasibility_negotiation',
+          data: {
+            requestedBudget: budget,
+            days,
+            people,
+            score: feasibility.score,
+            realisticDays,
+            recommendedMinTotal,
+            balancedTotal
+          }
+        };
+
+        systemDirective = `[JEV Feasibility Guard Directives]:
+- Trạng thái JEV Guard: ${feasibility.decision} (Điểm: ${feasibility.score}/1.0 - Bất khả thi/Cần thương lượng).
+- Phân tích: Ngân sách ${formatVND(budget)} cho ${days} ngày chỉ đạt ~${formatVND(dailyBudget)}/ngày/người. Mức này thấp hơn ngưỡng dinh dưỡng tối thiểu nấu ăn tại nhà (~18.000đ/ngày).
+- Đề xuất 3 phương án đàm phán cụ thể:
+  1. Rút ngắn số ngày: Dùng ${formatVND(budget)} ăn đủ dinh dưỡng trong ~${realisticDays} ngày (~18.000đ - 20.000đ/ngày).
+  2. Điều chỉnh ngân sách cho ${days} ngày: Mức tối giản ~${formatVND(recommendedMinTotal)} (18.000đ/ngày); mức cân đối thịt cá ~${formatVND(balancedTotal)} (35.000đ/ngày).
+  3. Săn suất ăn giải cứu cận date: Mua deal giờ vàng FoodSaver từ 10.000đ - 18.000đ từ các quán đối tác lân cận.
+- Thái độ: Thấu hiểu, chia sẻ, mang tính xây dựng cao.`;
+
+        quickSuggestions = [
+          `Áp dụng kế hoạch ${realisticDays} ngày với ${formatVND(budget)}`,
+          'Xem thực đơn 50K/ngày',
+          'Tìm suất ăn cận date gần tôi'
+        ];
+      }
+      break;
+    }
+
+    case 'CHITCHAT': {
+      systemDirective = `[JEV Directives]: Người dùng đang chào hỏi hoặc trò chuyện xã giao. Hãy chào lại ${userPronoun} thật tươi vui, ấm áp, giới thiệu ${botPronoun} là Trợ lý Dinh dưỡng & Tài chính FoodSaver và gợi ý 1 câu hỏi thú vị về kế hoạch ăn uống hoặc tiết kiệm hôm nay.`;
+      quickSuggestions = [
+        'Ăn 50K/ngày đủ chất không?',
+        'Kế hoạch chi tiêu 1.5 triệu/tháng',
+        'Có món gì giải cứu gần tôi?'
+      ];
+      break;
+    }
+
+    default: {
+      systemDirective = `[JEV Directives]: Người dùng đang hỏi đáp thông tin dinh dưỡng, bảo quản thực phẩm, tìm chợ giá rẻ tại TP.HCM (Hóc Môn, Thủ Đức, Bình Điền) hoặc thông tin chung. Trả lời chi tiết, thực tế, bổ ích.`;
+      quickSuggestions = [
+        'Lập kế hoạch ăn uống',
+        'Tìm chợ giá rẻ ở TP.HCM',
+        'Cách bảo quản thực phẩm cận date'
+      ];
+      break;
+    }
+  }
+
+  const systemPrompt = `Bạn là Trợ lý Dinh dưỡng & Tài chính FoodSaver – một trợ lý AI thông minh, nhiệt thành và thực tế, vận hành cùng bộ lọc JEV Guard System One.
+XƯNG HÔ BẮT BUỘC:
+- Luôn luôn tự xưng là "${botPronoun}".
+- Luôn luôn gọi người dùng là "${userPronoun}".
+- Tuyệt đối giữ đúng cặp xưng hô này trong toàn bộ câu trả lời, không đổi sang đại từ khác.
+
+NGUYÊN TẮC TRẢ LỜI:
+1. Tất cả số liệu dinh dưỡng, giá tiền món ăn, điểm JEV Guard và suất ăn giải cứu được cung cấp trong chỉ dẫn hệ thống bên dưới là SỰ THẬT DUY NHẤT TỪ DATABASE. Hãy sử dụng chính xác các số liệu này để trả lời.
+2. Trình bày đẹp mắt bằng Markdown (tiêu đề in đậm, danh sách có bullet point, icon trực quan).
+3. Tuyệt đối không để lộ các thẻ kỹ thuật như [JEV Directives].
+
+${systemDirective}`;
+
+  const llmMessages = [];
+  const history = context.recentTurns || [];
+  for (const turn of history.slice(-6)) {
+    llmMessages.push({
+      role: turn.role === 'assistant' ? 'assistant' : 'user',
+      content: turn.content
+    });
+  }
+
+  llmMessages.push({
+    role: 'user',
+    content: message
+  });
+
+  return {
+    systemPrompt,
+    llmMessages,
+    intent,
+    richCards,
+    quickSuggestions,
+    context,
+    effectiveSessionId
+  };
 }
 
-function handleProfileUpdate(message, context) {
-  const norm = stripVN(message);
-  const effectiveId = context.userId;
+/**
+ * JSON Completion with LLM Responder
+ */
+export async function processChatMessage({ message, userId, sessionId }) {
+  const pipeline = await prepareChatPipeline({ message, userId, sessionId });
 
-  if (norm.includes('anh em') || norm.includes('anh - em') || norm.includes('goi anh') || norm.includes('xung ho anh')) {
-    saveUserFact(effectiveId, 'address_form', 'Anh');
-    saveUserFact(effectiveId, 'bot_form', 'em');
-    context.profile.address_form = 'Anh';
-    context.profile.bot_form = 'em';
-    return `Dạ vâng anh! Em đã ghi nhớ cách xưng hô anh - em rồi nhé. Em sẵn sàng hỗ trợ anh lên kế hoạch thực đơn tiết kiệm hoặc tìm kiếm các suất ăn giải cứu giờ vàng, anh cứ nhắn em nhé!`;
-  }
-  if (norm.includes('chi em') || norm.includes('chi - em') || norm.includes('goi chi') || norm.includes('xung ho chi')) {
-    saveUserFact(effectiveId, 'address_form', 'Chị');
-    saveUserFact(effectiveId, 'bot_form', 'em');
-    context.profile.address_form = 'Chị';
-    context.profile.bot_form = 'em';
-    return `Dạ vâng chị! Em đã ghi nhớ cách xưng hô chị - em rồi nhé. Em sẵn sàng hỗ trợ chị lên thực đơn dinh dưỡng cho gia đình hoặc tìm deal giải cứu thực phẩm, chị cứ nhắn em nhé!`;
-  }
-  if (norm.includes('ban minh') || norm.includes('ban - minh') || norm.includes('goi ban') || norm.includes('xung ho ban')) {
-    saveUserFact(effectiveId, 'address_form', 'Bạn');
-    saveUserFact(effectiveId, 'bot_form', 'mình');
-    context.profile.address_form = 'Bạn';
-    context.profile.bot_form = 'mình';
-    return `Ok bạn! Mình đã lưu cách xưng hô bạn - mình rồi nhé. Bạn muốn mình tính toán chi tiêu hay gợi ý món ăn gì hôm nay?`;
-  }
-  if (norm.includes('em anh') || norm.includes('em - anh')) {
-    saveUserFact(effectiveId, 'address_form', 'Em');
-    saveUserFact(effectiveId, 'bot_form', 'anh');
-    context.profile.address_form = 'Em';
-    context.profile.bot_form = 'anh';
-    return `Dạ chào em! Anh đã ghi nhớ cách xưng hô rồi nhé. Em muốn anh hỗ trợ lập thực đơn hay tìm suất ăn gì nào?`;
-  }
-  if (norm.includes('di ung') || norm.includes('kieng an')) {
-    saveUserFact(effectiveId, 'allergies', message);
-    return `Em đã ghi nhận thông tin dị ứng/kiêng cữ của bạn vào hồ sơ rồi nhé. Các gợi ý thực đơn tiếp theo em sẽ tự động loại trừ các nguyên liệu này để bảo đảm an toàn sức khỏe!`;
+  let replyText = '';
+  try {
+    replyText = await generateLLMResponse({
+      systemPrompt: pipeline.systemPrompt,
+      messages: pipeline.llmMessages,
+      maxTokens: 800,
+      temperature: 0.6
+    });
+  } catch (err) {
+    console.warn('[LLM Generate Error, using fallback]:', err.message);
+    replyText = `Chào ${pipeline.context.profile.address_form || 'bạn'}! Em đã ghi nhận yêu cầu và đồng bộ dữ liệu cùng FoodSaver JEV Guard.`;
   }
 
-  return `Em đã ghi nhận thông tin của bạn vào bộ nhớ cá nhân hóa rồi nhé! Bạn muốn tiếp tục hỏi về thực đơn hay tính toán chi tiêu ăn uống ạ?`;
+  // Record assistant turn
+  appendSessionTurn(pipeline.effectiveSessionId, 'assistant', replyText);
+
+  // Async Memory Extractor
+  setImmediate(() => {
+    extractAndSaveMemoryAsync({
+      userId,
+      sessionId: pipeline.effectiveSessionId,
+      message
+    }).catch(err => console.warn('[Memory Extractor Async Error]:', err.message));
+  });
+
+  return {
+    reply: replyText,
+    intent: pipeline.intent,
+    richCards: pipeline.richCards,
+    quickSuggestions: pipeline.quickSuggestions,
+    profileContext: pipeline.context.profile
+  };
 }
 
-function handleChitchat(message, context) {
-  const userPronoun = context.profile.address_form || 'bạn';
-  const botPronoun = context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
-  return `Chào ${userPronoun}! ${botPronoun.charAt(0).toUpperCase() + botPronoun.slice(1)} là Trợ lý Dinh dưỡng & Tài chính FoodSaver. ${botPronoun.charAt(0).toUpperCase() + botPronoun.slice(1)} có thể giúp ${userPronoun} lập kế hoạch chi tiêu ăn uống tiết kiệm, gợi ý món ăn dinh dưỡng và tìm kiếm các suất ăn giải cứu giờ vàng lân cận. Hôm nay ${userPronoun} đang muốn lên kế hoạch ăn uống như thế nào?`;
-}
+/**
+ * SSE Streaming with LLM Responder
+ */
+export async function streamChatPipeline({ message, userId, sessionId, onToken }) {
+  const pipeline = await prepareChatPipeline({ message, userId, sessionId });
 
-function handleGeneralQA(message, context) {
-  const norm = stripVN(message);
-  const userPronoun = context.profile.address_form || 'bạn';
-
-  if (norm.includes('cho') || norm.includes('mua do re')) {
-    return `**Gợi ý các chợ giá tốt tại TP.HCM:**\n\n1. **Chợ đầu mối Hóc Môn (Tây Bắc):** Nổi tiếng về thịt heo sạch và rau củ quả giá sỉ từ 2h sáng.\n2. **Chợ đầu mối Nông sản Thủ Đức (Đông):** Vựa trái cây và rau củ lớn nhất, rẻ hơn chợ bán lẻ 30-40% khi mua theo cân/rổ.\n3. **Chợ Bình Điền (Quận 8):** Hải sản tươi sống, thịt cá đầu mối mở suốt đêm.\n4. **Chợ Bà Chiểu & Chợ Tân Định:** Thuận tiện trong nội thành, nhiều sạp rau quả bình dân sau 16h chiều.\n\n💡 *Mẹo:* Đi chợ cùng bạn bè để mua số lượng 2-3kg chia nhau giá sỉ!`;
+  let fullReply = '';
+  try {
+    fullReply = await streamLLMResponse({
+      systemPrompt: pipeline.systemPrompt,
+      messages: pipeline.llmMessages,
+      onToken,
+      maxTokens: 800,
+      temperature: 0.6
+    });
+  } catch (err) {
+    console.warn('[LLM Stream Error, using fallback]:', err.message);
+    fullReply = `Dạ chào ${pipeline.context.profile.address_form || 'bạn'}! Em đang kết nối hệ thống FoodSaver.`;
+    if (onToken) onToken(fullReply);
   }
 
-  if (norm.includes('bao quan') || norm.includes('can date')) {
-    return `**Mẹo bảo quản thực phẩm tiết kiệm:**\n\n1. **Thịt cá cận date:** Mua về rửa sạch với nước muối loãng, thấm khô và cấp đông ngay vào các túi zip chia nhỏ từng bữa.\n2. **Rau củ:** Không rửa trước khi cất tủ lạnh; bọc trong giấy báo hoặc khăn giấy để hút ẩm thừa, giữ tươi được 5-7 ngày.\n3. **Cơm nguội / Bánh mì:** Cơm nguội cho vào hộp kín để ngăn mát nấu cơm rang; bánh mì bọc kín cấp đông, khi ăn xịt nhẹ chút nước rồi nướng lại giòn rụm.`;
-  }
+  // Record assistant turn
+  appendSessionTurn(pipeline.effectiveSessionId, 'assistant', fullReply);
 
-  return `Chào ${userPronoun}! FoodSaver hỗ trợ ${userPronoun} 3 việc chính:\n\n1. **Lập kế hoạch ăn uống theo ngân sách:** Tính toán số tiền mỗi bữa (50k/ngày, 1.5tr/tháng...) đảm bảo đủ calo.\n2. **Gợi ý công thức & Nguyên liệu:** Hướng dẫn cách nấu ngon và tiết kiệm.\n3. **Radar giải cứu cận date:** Kết nối ${userPronoun} với các suất ăn giờ vàng từ nhà hàng, quán ăn đối tác với giá giảm đến 50%.`;
+  // Async Memory Extractor
+  setImmediate(() => {
+    extractAndSaveMemoryAsync({
+      userId,
+      sessionId: pipeline.effectiveSessionId,
+      message
+    }).catch(err => console.warn('[Memory Extractor Async Error]:', err.message));
+  });
+
+  return {
+    pipeline,
+    fullReply
+  };
 }
