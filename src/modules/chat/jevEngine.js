@@ -156,6 +156,21 @@ function evaluateLocally(rubric, state) {
         decision = 'SYSTEM_FEEDBACK';
         confidence = 0.98;
       }
+      // 0.5. Immediate hunger / craving detection
+      else if (
+        normText.includes('doi qua') ||
+        normText.includes('doi bung') ||
+        normText.includes('doi roi') ||
+        normText.includes('doi ghe') ||
+        normText.includes('them an') ||
+        normText.includes('muon an gi') ||
+        normText.includes('an gi bay gio') ||
+        normText.includes('an gi nhanh') ||
+        normText.includes('co gi an')
+      ) {
+        decision = 'HUNGRY_IMMEDIATE';
+        confidence = 0.95;
+      }
       // 1. Profile / Address form update
       else
       if (
