@@ -1,0 +1,16 @@
+{
+  "id": "memory_worthiness",
+  "name": "JEV Memory Worthiness Evaluator",
+  "description": "Chấm điểm thông tin người dùng có đáng lưu vào bộ nhớ dài hạn hay không",
+  "primitive": "score",
+  "criteria": {
+    "durability": "Thông tin này còn đúng sau 1 tháng không (ví dụ: dị ứng, phong cách ăn uống, xưng hô)",
+    "personal_relevance": "Có giúp cá nhân hóa cho các lần tư vấn tiếp theo không",
+    "certainty": "Người dùng nói chắc chắn hay chỉ buột miệng / giả định tình huống"
+  },
+  "output_rules": {
+    "save": "score >= 0.60",
+    "save_with_ttl": "0.35 <= score < 0.60",
+    "drop": "score < 0.35"
+  }
+}

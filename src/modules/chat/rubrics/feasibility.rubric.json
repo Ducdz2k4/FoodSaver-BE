@@ -1,0 +1,28 @@
+{
+  "id": "feasibility",
+  "name": "JEV Feasibility & Financial Guard",
+  "description": "Đánh giá tính khả thi tài chính và dinh dưỡng của yêu cầu bữa ăn dựa trên giá cả dữ liệu thực tế",
+  "primitive": "score_and_noul",
+  "questions": {
+    "feasibility_score": {
+      "type": "score",
+      "instructions": "Chấm điểm tính khả thi từ 0.0 (hoàn toàn bất khả thi) đến 1.0 (rất khả thi)",
+      "rubric": {
+        "1.0": "Ngân sách dồi dào, thoải mái lựa chọn món ngon và đủ chất",
+        "0.8": "Ngân sách cân đối, hoàn toàn nấu được các món đủ chất nếu đi chợ thông minh",
+        "0.5": "Ngân sách eo hẹp, cần đàm phán tối ưu triệt để (meal prep, đồ khô, săn deal cận date)",
+        "0.2": "Ngân sách rất khó khăn, thiếu hụt dinh dưỡng nghiêm trọng, cần đề xuất phương án thay thế",
+        "0.0": "Hoàn toàn bất khả thi trong thực tế (ví dụ: 100k cho cả tháng 30 ngày)"
+      }
+    },
+    "is_feasible": {
+      "type": "noul",
+      "instructions": "Yêu cầu này có khả thi để thực thi ngay lập tức mà không cần điều chỉnh không?"
+    }
+  },
+  "thresholds": {
+    "pass": 0.70,
+    "negotiate": 0.25,
+    "block": 0.25
+  }
+}

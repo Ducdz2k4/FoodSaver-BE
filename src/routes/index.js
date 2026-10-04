@@ -18,6 +18,7 @@ import { adminStatsRoutes } from '../modules/admin/admin.routes.js';
 import { recipeRoutes } from '../modules/recipes/recipe.routes.js';
 import { mealPlanRoutes } from '../modules/meal-plans/mealPlan.routes.js';
 import { communityRoutes } from '../modules/community/community.routes.js';
+import { chatRoutes } from '../modules/chat/chat.routes.js';
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.use('/favorites', favoriteRoutes);
 router.use('/recipes', recipeRoutes);
 router.use('/meal-plans', mealPlanRoutes);
 router.use('/community', communityRoutes);
+
+// AI Chatbot Agent + JEV
+router.use('/chat', chatRoutes);
 
 // Admin Analytics & ESG Reports
 router.use('/admin', adminStatsRoutes);

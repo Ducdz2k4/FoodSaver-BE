@@ -1,0 +1,15 @@
+{
+  "id": "pre_router",
+  "name": "JEV Pre-Router Intent Classifier",
+  "description": "Phân loại ý định người dùng thành 5 nhánh xử lý độc lập mà không dùng chuỗi if/else cứng",
+  "primitive": "choice",
+  "instructions": "Phân tích tin nhắn của người dùng và chọn chính xác 1 ý định phù hợp nhất",
+  "choices": {
+    "CHITCHAT": "Chào hỏi thân mật, cảm ơn, khen ngợi hoặc trò chuyện thông thường không có yêu cầu nghiệp vụ",
+    "QA_INFO": "Hỏi đáp kiến thức, hỏi mẹo nấu ăn, hỏi chợ đầu mối giá rẻ, tìm hiểu cách hoạt động của FoodSaver",
+    "MEAL_PLAN_BUDGET": "Yêu cầu lên kế hoạch ăn uống, hỏi làm sao ăn với số tiền X trong Y ngày, lập thực đơn tài chính",
+    "RESCUE_DEAL_SEARCH": "Tìm kiếm suất ăn cận date, hỏi quán nào gần đây có deal giờ vàng, tìm đồ ăn giảm giá",
+    "WRITE_CALENDAR": "Yêu cầu ghi hoặc lưu món ăn vào lịch thực đơn tháng, xếp lịch bữa ăn"
+  },
+  "default_choice": "QA_INFO"
+}
