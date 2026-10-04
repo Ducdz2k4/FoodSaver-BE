@@ -1,4 +1,4 @@
-import { env } from '../../config/env.js';
+﻿import { env } from '../../config/env.js';
 
 /**
  * Universal Groq LLM Client for FoodSaver
@@ -8,7 +8,7 @@ import { env } from '../../config/env.js';
 export async function generateLLMResponse({
   messages = [],
   systemPrompt = '',
-  maxTokens = 2500,
+  maxTokens = 1000,
   temperature = 0.6
 }) {
   const apiKey = env.groq?.apiKey || process.env.GROQ_API_KEY;
@@ -23,32 +23,40 @@ export async function generateLLMResponse({
     fullMessages.push({ role: m.role || 'user', content: m.content || '' });
   }
 
-  try {
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: fullMessages,
-        max_tokens: maxTokens,
-        temperature
-      })
-    });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: fullMessages,
+          max_tokens: maxTokens,
+          temperature
+        })
+      });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[Groq LLM Error]:', res.status, errText);
-      throw new Error(`Groq LLM failed: ${res.status}`);
+      if (res.status === 429 && attempt === 0) {
+        console.warn('[Groq Rate Limit 429] Waiting 2.5s before retry...');
+        await new Promise(r => setTimeout(r, 2500));
+        continue;
+      }
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('[Groq LLM Error]:', res.status, errText);
+        throw new Error(`Groq LLM failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() || '';
+    } catch (err) {
+      if (attempt === 1) throw err;
+      await new Promise(r => setTimeout(r, 1500));
     }
-
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || '';
-  } catch (err) {
-    console.error('[Groq LLM Call Exception]:', err.message);
-    throw err;
   }
 }
 
@@ -56,7 +64,7 @@ export async function streamLLMResponse({
   messages = [],
   systemPrompt = '',
   onToken,
-  maxTokens = 2500,
+  maxTokens = 1000,
   temperature = 0.6
 }) {
   const apiKey = env.groq?.apiKey || process.env.GROQ_API_KEY;
@@ -71,56 +79,69 @@ export async function streamLLMResponse({
     fullMessages.push({ role: m.role || 'user', content: m.content || '' });
   }
 
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model,
-      messages: fullMessages,
-      max_tokens: maxTokens,
-      temperature,
-      stream: true
-    })
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: fullMessages,
+          max_tokens: maxTokens,
+          temperature,
+          stream: true
+        })
+      });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq Stream failed: ${res.status} ${errText}`);
-  }
+      if (res.status === 429 && attempt === 0) {
+        console.warn('[Groq Stream Rate Limit 429] Waiting 2.5s before retry...');
+        await new Promise(r => setTimeout(r, 2500));
+        continue;
+      }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let accumulatedContent = '';
-  let buffer = '';
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Groq Stream failed: ${res.status} ${errText}`);
+      }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+      let buffer = '';
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      if (trimmed === 'data: [DONE]') continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      try {
-        const parsed = JSON.parse(trimmed.slice(6));
-        const delta = parsed.choices?.[0]?.delta;
-        if (delta?.content) {
-          accumulatedContent += delta.content;
-          if (onToken) {
-            onToken(delta.content);
-          }
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          if (trimmed === 'data: [DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(trimmed.slice(6));
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              accumulatedContent += delta.content;
+              if (onToken) {
+                onToken(delta.content);
+              }
+            }
+          } catch {}
         }
-      } catch {}
+      }
+
+      return accumulatedContent.trim();
+    } catch (err) {
+      if (attempt === 1) throw err;
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
-
-  return accumulatedContent.trim();
 }

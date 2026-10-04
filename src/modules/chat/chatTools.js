@@ -1,11 +1,11 @@
 import { prisma } from '../../config/database.js';
+import { MealPlanService } from '../meal-plans/mealPlan.service.js';
 
 /**
  * Tool 1: estimate_min_cost
  * Calculates minimum feasible financial and calorie baseline using real database items
  */
-export async function estimateMinCost({ days = 1, people = 1, mealsPerDay = 3, targetBudget = 0 }) {
-  // Fetch real recipes and active listings from database
+export async function estimateMinCost({ days = 1, people = 1, mealsPerDay = 3, targetBudget = 0, isVegetarian = false }) {
   let availableRecipes = [];
   try {
     availableRecipes = await prisma.recipe.findMany({
@@ -16,15 +16,9 @@ export async function estimateMinCost({ days = 1, people = 1, mealsPerDay = 3, t
     availableRecipes = [];
   }
 
-  // Calculate cheapest valid meals from real DB or benchmark
-  const costs = availableRecipes.map(r => r.cost).filter(c => c > 0);
-  const minSingleMealCost = costs.length > 0 ? Math.min(...costs) : 18000;
-  const avgSingleMealCost = costs.length > 0 ? Math.round(costs.reduce((a, b) => a + b, 0) / costs.length) : 28000;
-
-  // Ultra-saving benchmark: bulk staples (gạo + trứng + đậu hũ + rau muống/cải)
-  const bareSurvivalCostPerDay = 18000; // ~6k/bữa
-  const balancedSavingCostPerDay = Math.min(35000, minSingleMealCost * 1.5);
-  const comfortableCostPerDay = avgSingleMealCost * 2;
+  const bareSurvivalCostPerDay = isVegetarian ? 15000 : 18000;
+  const balancedSavingCostPerDay = isVegetarian ? 30000 : 35000;
+  const comfortableCostPerDay = isVegetarian ? 45000 : 55000;
 
   const totalMinBare = bareSurvivalCostPerDay * days * people;
   const totalBalanced = balancedSavingCostPerDay * days * people;
@@ -51,7 +45,7 @@ export async function estimateMinCost({ days = 1, people = 1, mealsPerDay = 3, t
  * Tool 2: search_rescue_deals
  * Real surplus listings from FoodSaver partners
  */
-export async function searchRescueDeals({ maxPrice = 50000, limit = 4, category } = {}) {
+export async function searchRescueDeals({ maxPrice = 50000, limit = 4, category, isVegetarian = false } = {}) {
   try {
     const where = {
       status: { in: ['AVAILABLE', 'EXPIRING_SOON'] },
@@ -93,12 +87,13 @@ export async function searchRescueDeals({ maxPrice = 50000, limit = 4, category 
 
 /**
  * Tool 3: search_recipes
- * Find recipes by name/keyword or category
  */
-export async function searchRecipes({ query = '', limit = 5 } = {}) {
+export async function searchRecipes({ query = '', limit = 5, isVegetarian = false } = {}) {
   try {
     const where = {};
-    if (query.trim()) {
+    if (isVegetarian) {
+      where.category = 'chay';
+    } else if (query.trim()) {
       where.OR = [
         { name: { contains: query.trim() } },
         { tags: { contains: query.trim() } }
@@ -117,83 +112,65 @@ export async function searchRecipes({ query = '', limit = 5 } = {}) {
 
 /**
  * Tool 4: generate_meal_schedule
- * Produces structured meal schedule tailored to budget and days
+ * Produces structured meal schedule tailored to budget, days, and dietary style (authentic Vietnamese dishes)
  */
-export async function generateMealSchedule({ days = 3, budget = 150000, people = 1 }) {
+export async function generateMealSchedule({ days = 3, budget = 150000, people = 1, isVegetarian = false, isHomeCooking = true }) {
   const dailyBudget = Math.floor(budget / days / people);
-  let dbRecipes = [];
-  try {
-    dbRecipes = await prisma.recipe.findMany({ take: 16 });
-  } catch {
-    dbRecipes = [];
-  }
-
   const schedule = [];
   const countDays = Math.min(days, 7);
+
+  // Authentic Vietnamese vegetarian dishes
+  const vegBreakfastList = [
+    { name: 'Bánh mì chả lụa chay & dưa leo', cost: 10000, calories: 310, ingredients: ['Bánh mì', 'Chả lụa chay', 'Dưa leo', 'Ngò rí', 'Nước tương tỏi ớt'] },
+    { name: 'Bún xào chay rau cải nấm rơm', cost: 12000, calories: 350, ingredients: ['Bún gạo', 'Cải ngọt', 'Đậu hũ chiên', 'Nấm rơm', 'Cà rốt'] },
+    { name: 'Xôi bắp hạt sen dừa sợi', cost: 10000, calories: 360, ingredients: ['Nếp thơm', 'Bắp nếp', 'Hạt sen tươi', 'Mè rang', 'Đậu phộng'] },
+    { name: 'Cháo nấm hương hạt sen chay', cost: 12000, calories: 290, ingredients: ['Gạo tẻ', 'Hạt sen', 'Nấm hương', 'Hành hoa', 'Tiêu sọ'] }
+  ];
+
+  const vegLunchList = [
+    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm trắng + Canh rau ngót', cost: 15000, calories: 460, ingredients: ['Đậu hũ mơ', 'Cà chua chín', 'Hành hoa', 'Rau ngót', 'Gạo thơm'] },
+    { name: 'Nấm rơm kho sả ớt + Canh chua chay + Cơm trắng', cost: 16000, calories: 450, ingredients: ['Nấm rơm', 'Sả ớt băm', 'Thơm (dứa)', 'Bạc hà', 'Đậu bắp'] },
+    { name: 'Bún riêu chay đậu hũ nấm rơm', cost: 18000, calories: 430, ingredients: ['Bún tươi', 'Riêu đậu nành', 'Đậu hũ chiên', 'Nấm rơm', 'Rau muống bào'] },
+    { name: 'Cơm chiên ngũ sắc rau củ hạt sen', cost: 15000, calories: 480, ingredients: ['Cơm nguội', 'Đậu Hà Lan', 'Cà rốt', 'Hạt sen', 'Nấm đùi gà'] }
+  ];
+
+  const vegDinnerList = [
+    { name: 'Rau củ luộc ngũ sắc chấm kho quẹt chay + Cơm trắng', cost: 14000, calories: 380, ingredients: ['Bầu non', 'Cà rốt', 'Đậu bắp', 'Bông cải', 'Nước mắm chay kho quẹt', 'Tóp mỡ bánh mì'] },
+    { name: 'Canh bí đỏ đậu phộng + Đậu hũ chiên sả + Cơm trắng', cost: 13000, calories: 410, ingredients: ['Bí đỏ', 'Đậu phộng', 'Đậu hũ trắng', 'Sả ớt', 'Gạo thơm'] },
+    { name: 'Đậu hũ kho nấm đông cô + Canh cải bẹ xanh gừng tươi', cost: 15000, calories: 420, ingredients: ['Đậu hũ', 'Nấm đông cô', 'Cải bẹ xanh', 'Gừng tươi', 'Tiêu'] },
+    { name: 'Canh mướp hương mồng tơi nấm rơm + Cơm trắng', cost: 12000, calories: 360, ingredients: ['Mướp hương', 'Rau mồng tơi', 'Nấm rơm', 'Đậu phộng rang'] }
+  ];
+
+  // Standard non-veg Vietnamese dishes
+  const standardBreakfast = [
+    { name: 'Bánh mì ốp la pate', cost: 12000, calories: 380, ingredients: ['Bánh mì', 'Trứng gà', 'Pate', 'Dưa leo'] },
+    { name: 'Xôi xéo mỡ hành ruốc', cost: 15000, calories: 420, ingredients: ['Gạo nếp', 'Đậu xanh', 'Hành phi', 'Ruốc thịt'] },
+    { name: 'Cháo sườn sụn quẩy giòn', cost: 15000, calories: 390, ingredients: ['Gạo tẻ', 'Sườn sụn', 'Quẩy giòn', 'Hành hoa'] }
+  ];
+
+  const standardLunch = [
+    { name: 'Cơm rang dưa bò', cost: 22000, calories: 480, ingredients: ['Cơm', 'Thịt bò', 'Dưa chua', 'Trứng gà'] },
+    { name: 'Phở bò tái nạm', cost: 25000, calories: 450, ingredients: ['Bánh phở', 'Nạm bò', 'Hành tây', 'Rau thơm'] },
+    { name: 'Bún chả giò rau sống', cost: 22000, calories: 460, ingredients: ['Bún tươi', 'Chả giò', 'Rau sống', 'Nước mắm chua ngọt'] }
+  ];
+
+  const standardDinner = [
+    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm', cost: 13000, calories: 350, ingredients: ['Đậu hũ', 'Cà chua', 'Cơm trắng', 'Hành hoa'] },
+    { name: 'Canh chua cá lóc + Cơm trắng', cost: 16000, calories: 360, ingredients: ['Cá lóc', 'Thơm', 'Cà chua', 'Đậu bắp', 'Cơm'] },
+    { name: 'Trứng chiên thịt băm + Canh rau cải', cost: 14000, calories: 410, ingredients: ['Trứng', 'Thịt heo băm', 'Rau cải', 'Gạo thơm'] }
+  ];
 
   for (let d = 1; d <= countDays; d++) {
     let breakfast, lunch, dinner;
 
-    if (dailyBudget >= 50000) {
-      // 50k/day standard: Breakfast 12-15k, Lunch 20-25k, Dinner 12-15k
-      const bList = [
-        { name: 'Bánh mì ốp la pate', cost: 12000, calories: 380 },
-        { name: 'Xôi xéo mỡ hành ruốc', cost: 15000, calories: 420 },
-        { name: 'Cháo sườn sụn quẩy giòn', cost: 15000, calories: 390 }
-      ];
-      const lList = [
-        { name: 'Cơm rang dưa bò', cost: 22000, calories: 480 },
-        { name: 'Phở bò tái nạm (suất vừa)', cost: 25000, calories: 450 },
-        { name: 'Bún chả giò rau sống', cost: 22000, calories: 460 }
-      ];
-      const dList = [
-        { name: 'Đậu hũ sốt cà chua hành hoa + Cơm', cost: 13000, calories: 350 },
-        { name: 'Canh chua cá lóc + Cơm trắng', cost: 15000, calories: 340 },
-        { name: 'Suất ăn giải cứu đối tác FoodSaver (Giờ vàng)', cost: 13000, calories: 420 }
-      ];
-
-      breakfast = bList[(d - 1) % bList.length];
-      lunch = lList[(d - 1) % lList.length];
-      dinner = dList[(d - 1) % dList.length];
-    } else if (dailyBudget >= 22000) {
-      // 22k - 45k/day: Smart home-cooked saving
-      const bList = [
-        { name: 'Bánh mì trứng ốp la', cost: 8000, calories: 320 },
-        { name: 'Xôi đậu phộng vừng dừa', cost: 8000, calories: 350 },
-        { name: 'Bánh mì kẹp xúc xích trứng', cost: 8000, calories: 330 }
-      ];
-      const lList = [
-        { name: 'Đậu hũ sốt cà chua + Cơm trắng', cost: 10000, calories: 420 },
-        { name: 'Cơm rang trứng hành hoa + Dưa góp', cost: 10000, calories: 450 },
-        { name: 'Suất cơm trưa giải cứu FoodSaver (Giờ vàng)', cost: 10000, calories: 460 }
-      ];
-      const dList = [
-        { name: 'Canh rau cải thịt băm + Trứng luộc', cost: 7000, calories: 350 },
-        { name: 'Trứng chiên nước mắm + Rau muống xào tỏi', cost: 7000, calories: 360 },
-        { name: 'Canh đậu hũ rong biển + Cơm trắng', cost: 7000, calories: 330 }
-      ];
-
-      breakfast = bList[(d - 1) % bList.length];
-      lunch = lList[(d - 1) % lList.length];
-      dinner = dList[(d - 1) % dList.length];
+    if (isVegetarian) {
+      breakfast = vegBreakfastList[(d - 1) % vegBreakfastList.length];
+      lunch = vegLunchList[(d - 1) % vegLunchList.length];
+      dinner = vegDinnerList[(d - 1) % vegDinnerList.length];
     } else {
-      // ~18k/day bare survival
-      const bList = [
-        { name: 'Bánh mì không + 1 quả trứng luộc', cost: 6000, calories: 280 },
-        { name: 'Cháo trắng hột vịt muối / ruốc', cost: 5500, calories: 260 }
-      ];
-      const lList = [
-        { name: 'Đậu hũ chiên sả + Rau muống luộc + Cơm', cost: 6500, calories: 400 },
-        { name: 'Trứng chiên hành + Cơm trắng', cost: 6500, calories: 390 }
-      ];
-      const dList = [
-        { name: 'Canh rau cải xanh + Nước mắm tỏi ớt + Cơm', cost: 5500, calories: 320 },
-        { name: 'Đậu hũ kho tương + Canh bí đỏ', cost: 5500, calories: 340 }
-      ];
-
-      breakfast = bList[(d - 1) % bList.length];
-      lunch = lList[(d - 1) % lList.length];
-      dinner = dList[(d - 1) % dList.length];
+      breakfast = standardBreakfast[(d - 1) % standardBreakfast.length];
+      lunch = standardLunch[(d - 1) % standardLunch.length];
+      dinner = standardDinner[(d - 1) % standardDinner.length];
     }
 
     const dayTotalCost = breakfast.cost + lunch.cost + dinner.cost;
@@ -209,8 +186,78 @@ export async function generateMealSchedule({ days = 3, budget = 150000, people =
     days,
     budget,
     dailyBudget,
+    isVegetarian,
     schedule
   };
+}
+
+/**
+ * Tool 5: read_user_calendar
+ * Checks database for existing meal plans on a specific date (e.g. 2026-10-05)
+ */
+export async function readUserCalendar({ date, userId }) {
+  try {
+    const where = { date };
+    if (userId) {
+      where.OR = [{ userId }, { userId: null }];
+    }
+
+    const plans = await prisma.mealPlan.findMany({
+      where,
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const slots = {
+      breakfast: plans.find(p => p.slot === 'breakfast') || null,
+      lunch: plans.find(p => p.slot === 'lunch') || null,
+      dinner: plans.find(p => p.slot === 'dinner') || null,
+      snack: plans.find(p => p.slot === 'snack') || null,
+    };
+
+    return {
+      date,
+      hasExisting: plans.length > 0,
+      existingCount: plans.length,
+      existingSlots: slots,
+      plans
+    };
+  } catch (err) {
+    console.error('[Tool: readUserCalendar Error]:', err.message);
+    return { date, hasExisting: false, existingCount: 0, existingSlots: {}, plans: [] };
+  }
+}
+
+/**
+ * Tool 6: write_user_calendar
+ * Writes / replaces meal plan slots directly in database (prisma.mealPlan)
+ */
+export async function writeUserCalendar({ date, userId, slots = [] }) {
+  try {
+    const applied = [];
+    for (const item of slots) {
+      const res = await MealPlanService.savePlanSlot({
+        userId: userId || null,
+        date,
+        slot: item.slot,
+        meal: item.meal,
+        image: item.image || null,
+        calories: Number(item.calories) || 0,
+        cost: Number(item.cost) || 0,
+        ingredients: Array.isArray(item.ingredients) ? item.ingredients : []
+      });
+      applied.push(res);
+    }
+
+    return {
+      success: true,
+      date,
+      appliedCount: applied.length,
+      applied
+    };
+  } catch (err) {
+    console.error('[Tool: writeUserCalendar Error]:', err.message);
+    throw err;
+  }
 }
 
 /**
@@ -219,22 +266,32 @@ export async function generateMealSchedule({ days = 3, budget = 150000, people =
 export const CHAT_TOOLS = [
   {
     name: 'estimate_min_cost',
-    description: 'Tính toán chi phí tối thiểu theo ngày, người và phân bổ dinh dưỡng từ dữ liệu thực phẩm thực tế',
+    description: 'Tính toán chi phí tối thiểu theo ngày, người và phân bổ dinh dưỡng từ dữ liệu thực tế',
     execute: estimateMinCost
   },
   {
     name: 'search_rescue_deals',
-    description: 'Tìm kiếm các suất ăn giải cứu cận date từ đối tác FoodSaver theo khoảng giá và mức giảm',
+    description: 'Tìm kiếm các suất ăn giải cứu cận date từ đối tác FoodSaver',
     execute: searchRescueDeals
   },
   {
     name: 'search_recipes',
-    description: 'Tra cứu công thức nấu ăn, định lượng nguyên liệu và giá dự kiến',
+    description: 'Tra cứu công thức nấu ăn món Việt, món chay và định lượng nguyên liệu',
     execute: searchRecipes
   },
   {
     name: 'generate_meal_schedule',
-    description: 'Sinh kế hoạch phân bổ món ăn từng ngày theo ngân sách khả thi',
+    description: 'Sinh kế hoạch phân bổ món ăn từng ngày chuẩn Việt (chay hoặc mặn)',
     execute: generateMealSchedule
+  },
+  {
+    name: 'read_user_calendar',
+    description: 'Đọc dữ liệu lịch ăn của người dùng trong cơ sở dữ liệu để kiểm tra món đã lên lịch',
+    execute: readUserCalendar
+  },
+  {
+    name: 'write_user_calendar',
+    description: 'Lưu hoặc thay thế món ăn vào Lịch ăn tháng trong Database thật',
+    execute: writeUserCalendar
   }
 ];
