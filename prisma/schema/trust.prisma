@@ -1,0 +1,39 @@
+model UserTrust {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  trustScore        Float     @default(100.0)
+  trustLevel        String    @default("HIGH")
+  noShowCount       Int       @default(0)
+  completedOrders   Int       @default(0)
+  cancelCount       Int       @default(0)
+  lastNoShowAt      DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_trusts")
+}
+
+enum TrustEventType {
+  ORDER_COMPLETED
+  CUSTOMER_NO_SHOW
+  CANCELLED
+  DISPUTED
+  SUCCESSFUL_PICKUP
+}
+
+model TrustEvent {
+  id        String         @id @default(uuid())
+  userId    String
+  orderId   String?
+  eventType TrustEventType
+  scoreDelta Float         @default(0)
+  note      String?        @db.VarChar(255)
+  createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([eventType])
+  @@map("trust_events")
+}

@@ -53,6 +53,7 @@ model Listing {
   partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   orders    Order[]
   favorites Favorite[]
+  reservations InventoryReservation[]
 
   @@index([status])
   @@index([expiryAt])

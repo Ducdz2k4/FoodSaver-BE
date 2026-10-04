@@ -1,0 +1,28 @@
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  REFUNDED
+  FAILED
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  orderId              String
+  amount               Decimal       @db.Decimal(12, 2)
+  method               String        @db.VarChar(32) // ONLINE, CASH
+  status               PaymentStatus @default(PENDING)
+  idempotencyKey       String?       @unique @db.VarChar(100)
+  gatewayTransactionId String?       @unique @db.VarChar(100)
+  gatewayResponse      Json?
+  paidAt               DateTime?
+  refundedAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
