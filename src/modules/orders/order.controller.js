@@ -114,6 +114,34 @@ export const OrderController = {
     });
   }),
 
+
+  proposeAdjustment: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await OrderService.proposeAdjustment(req.user.id, id, req.body);
+    return ApiResponse.success(res, {
+      message: "Đã gửi đề xuất điều chỉnh số lượng tới khách hàng",
+      data: result
+    });
+  }),
+
+  respondAdjustment: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const order = await OrderService.respondAdjustment(req.user.id, id, req.body);
+    return ApiResponse.success(res, {
+      message: req.body.accepted ? "Đã xác nhận điều chỉnh số lượng món" : "Đã từ chối điều chỉnh",
+      data: order
+    });
+  }),
+
+  adjustOrderQuantity: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await OrderService.adjustOrderQuantity(req.user.id, id, req.body);
+    return ApiResponse.success(res, {
+      message: "Đã gửi đề xuất điều chỉnh số lượng",
+      data: result
+    });
+  }),
+
   confirmHandover: asyncHandler(async (req, res) => {
     const { id } = req.params;
     const order = await OrderService.confirmHandover(req.user.id, id, req.body);

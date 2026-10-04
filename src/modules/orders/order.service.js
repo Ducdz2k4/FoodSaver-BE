@@ -752,6 +752,149 @@ export const OrderService = {
     };
   },
 
+
+  async proposeAdjustment(partnerUserId, orderId, { newQuantity, reason }) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { listing: { include: { partner: true } }, customer: true }
+    });
+
+    if (!order) throw ApiError.notFound("Không tìm thấy đơn hàng");
+    if (order.listing.partner.userId !== partnerUserId) {
+      throw ApiError.forbidden("Bạn không có quyền quản lý đơn hàng này");
+    }
+
+    const unmodifiable = ["COMPLETED", "CANCELLED", "REJECTED", "EXPIRED"];
+    if (unmodifiable.includes(order.status)) {
+      throw ApiError.badRequest(`Không thể điều chỉnh đơn hàng ở trạng thái "${order.status}"!`);
+    }
+
+    const newQty = parseInt(newQuantity, 10);
+    if (isNaN(newQty) || newQty <= 0) {
+      throw ApiError.badRequest("Số lượng mới phải lớn hơn 0");
+    }
+
+    const unitPrice = Number(order.unitPrice);
+    const newMerchandiseTotal = unitPrice * newQty;
+    const feePercent = Number(order.serviceFeePercentage || 10);
+    const newServiceFee = Math.round((newMerchandiseTotal * feePercent) / 100);
+    const newTotalPrice = Math.max(0, newMerchandiseTotal + Number(order.shippingFee || 0) - Number(order.discountAmount || 0));
+
+    emitToUser(order.customerId, "ORDER_ADJUSTMENT_PROPOSED", {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      oldQuantity: order.quantity,
+      newQuantity: newQty,
+      newTotalPrice,
+      reason: reason || "Điều chỉnh tại quầy"
+    });
+
+    return {
+      orderId: order.id,
+      oldQuantity: order.quantity,
+      newQuantity: newQty,
+      newTotalPrice,
+      reason
+    };
+  },
+
+  async respondAdjustment(customerUserId, orderId, { accepted, newQuantity, reason }) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { listing: { include: { partner: true } }, customer: true }
+    });
+
+    if (!order) throw ApiError.notFound("Không tìm thấy đơn hàng");
+    if (order.customerId !== customerUserId) {
+      throw ApiError.forbidden("Bạn không phải chủ đơn hàng");
+    }
+
+    if (!accepted) {
+      emitToPartner(order.listing.partnerId, "ORDER_ADJUSTMENT_DECLINED", {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        message: "Khách hàng từ chối điều chỉnh số lượng"
+      });
+      return formatOrderResponse(order);
+    }
+
+    const newQty = parseInt(newQuantity, 10);
+    if (isNaN(newQty) || newQty <= 0) {
+      throw ApiError.badRequest("Số lượng mới phải lớn hơn 0");
+    }
+
+    const diff = newQty - order.quantity;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (diff > 0) {
+        const listing = await tx.listing.findUnique({ where: { id: order.listingId } });
+        if (listing.quantity < diff) {
+          throw ApiError.badRequest(`Không đủ tồn kho để tăng số lượng (Còn lại: ${listing.quantity})`);
+        }
+        await tx.listing.update({
+          where: { id: order.listingId },
+          data: {
+            quantity: { decrement: diff },
+            status: listing.quantity === diff ? "SOLD_OUT" : listing.status
+          }
+        });
+      } else if (diff < 0) {
+        await tx.listing.update({
+          where: { id: order.listingId },
+          data: {
+            quantity: { increment: Math.abs(diff) },
+            status: "AVAILABLE"
+          }
+        });
+      }
+
+      const unitPrice = Number(order.unitPrice);
+      const newMerchandiseTotal = unitPrice * newQty;
+      const feePercent = Number(order.serviceFeePercentage || 10);
+      const newServiceFee = Math.round((newMerchandiseTotal * feePercent) / 100);
+      const newTotalPrice = Math.max(0, newMerchandiseTotal + Number(order.shippingFee || 0) - Number(order.discountAmount || 0));
+
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          quantity: newQty,
+          merchandiseTotal: newMerchandiseTotal,
+          serviceFee: newServiceFee,
+          totalPrice: newTotalPrice
+        },
+        include: {
+          listing: { include: { partner: true } },
+          customer: true
+        }
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          oldStatus: order.status,
+          newStatus: order.status,
+          changedBy: customerUserId,
+          note: `Khách đồng ý điều chỉnh số lượng sang ${newQty} phần: ${reason || "Xác nhận tại quầy"}`
+        }
+      });
+
+      return updatedOrder;
+    });
+
+    emitToPartner(order.listing.partnerId, "ORDER_ADJUSTMENT_ACCEPTED", {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      newQuantity: newQty,
+      newTotalPrice: updated.totalPrice
+    });
+
+    return formatOrderResponse(updated);
+  },
+
+  async adjustOrderQuantity(partnerUserId, orderId, { newQuantity, reason }) {
+    return this.proposeAdjustment(partnerUserId, orderId, { newQuantity, reason });
+  },
+
   async updatePartnerOrderStatus(userId, orderId, status) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
