@@ -15,6 +15,9 @@ import {
 import { notificationRoutes } from '../modules/notifications/notification.routes.js';
 import { favoriteRoutes } from '../modules/favorites/favorite.routes.js';
 import { adminStatsRoutes } from '../modules/admin/admin.routes.js';
+import { recipeRoutes } from '../modules/recipes/recipe.routes.js';
+import { mealPlanRoutes } from '../modules/meal-plans/mealPlan.routes.js';
+import { communityRoutes } from '../modules/community/community.routes.js';
 
 const router = Router();
 
@@ -37,6 +40,11 @@ router.use('/partner/orders', partnerOrderRoutes);
 // Notification routes
 router.use('/notifications', notificationRoutes);
 router.use('/favorites', favoriteRoutes);
+
+// Meal Planner domain routes
+router.use('/recipes', recipeRoutes);
+router.use('/meal-plans', mealPlanRoutes);
+router.use('/community', communityRoutes);
 
 // Admin Analytics & ESG Reports
 router.use('/admin', adminStatsRoutes);
