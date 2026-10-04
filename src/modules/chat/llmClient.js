@@ -8,7 +8,7 @@ import { env } from '../../config/env.js';
 export async function generateLLMResponse({
   messages = [],
   systemPrompt = '',
-  maxTokens = 800,
+  maxTokens = 2500,
   temperature = 0.6
 }) {
   const apiKey = env.groq?.apiKey || process.env.GROQ_API_KEY;
@@ -56,7 +56,7 @@ export async function streamLLMResponse({
   messages = [],
   systemPrompt = '',
   onToken,
-  maxTokens = 800,
+  maxTokens = 2500,
   temperature = 0.6
 }) {
   const apiKey = env.groq?.apiKey || process.env.GROQ_API_KEY;
