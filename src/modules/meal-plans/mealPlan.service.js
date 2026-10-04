@@ -27,6 +27,7 @@ export const MealPlanService = {
       grouped[p.date][p.slot] = {
         id: p.id,
         meal: p.meal,
+        image: p.image || null,
         calories: p.calories,
         cost: p.cost,
         ingredients: Array.isArray(p.ingredients) ? p.ingredients : [],
@@ -36,8 +37,7 @@ export const MealPlanService = {
     return grouped;
   },
 
-  async savePlanSlot({ userId, date, slot, meal, calories = 0, cost = 0, ingredients = [] }) {
-    // Check if slot exists for this date
+  async savePlanSlot({ userId, date, slot, meal, image, calories = 0, cost = 0, ingredients = [] }) {
     const where = {
       date,
       slot,
@@ -55,6 +55,7 @@ export const MealPlanService = {
         where: { id: existing.id },
         data: {
           meal,
+          image: image !== undefined ? image : existing.image,
           calories: Number(calories) || 0,
           cost: Number(cost) || 0,
           ingredients,
@@ -68,6 +69,7 @@ export const MealPlanService = {
         date,
         slot,
         meal,
+        image: image || null,
         calories: Number(calories) || 0,
         cost: Number(cost) || 0,
         ingredients,
