@@ -203,7 +203,29 @@ export function deleteUserFact(effectiveId, key) {
 /**
  * Clear session memory
  */
+
+// Temporary Session States (e.g. proposed menus, pending calendar updates)
+const sessionStateStore = new Map();
+
+export function setSessionState(sessionId, key, value) {
+  if (!sessionStateStore.has(sessionId)) {
+    sessionStateStore.set(sessionId, {});
+  }
+  const state = sessionStateStore.get(sessionId);
+  state[key] = value;
+}
+
+export function getSessionState(sessionId, key) {
+  const state = sessionStateStore.get(sessionId) || {};
+  return key ? state[key] : state;
+}
+
+export function clearSessionState(sessionId) {
+  sessionStateStore.delete(sessionId);
+}
+
 export function clearSessionMemory(effectiveId) {
   sessionStore.delete(effectiveId);
+  sessionStateStore.delete(effectiveId);
   return true;
 }
