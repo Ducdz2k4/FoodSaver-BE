@@ -18,13 +18,14 @@ export const MealPlanController = {
 
   savePlan: asyncHandler(async (req, res) => {
     const userId = req.user?.id || null;
-    const { date, slot, meal, calories, cost, ingredients } = req.body;
+    const { date, slot, meal, image, calories, cost, ingredients } = req.body;
 
     const plan = await MealPlanService.savePlanSlot({
       userId,
       date,
       slot,
       meal,
+      image,
       calories,
       cost,
       ingredients,
