@@ -119,45 +119,45 @@ export async function generateMealSchedule({ days = 3, budget = 150000, people =
   const schedule = [];
   const countDays = Math.min(days, 7);
 
-  // Authentic Vietnamese vegetarian dishes
+  // Authentic Vietnamese vegetarian dishes with images
   const vegBreakfastList = [
-    { name: 'Bánh mì chả lụa chay & dưa leo', cost: 10000, calories: 310, ingredients: ['Bánh mì', 'Chả lụa chay', 'Dưa leo', 'Ngò rí', 'Nước tương tỏi ớt'] },
-    { name: 'Bún xào chay rau cải nấm rơm', cost: 12000, calories: 350, ingredients: ['Bún gạo', 'Cải ngọt', 'Đậu hũ chiên', 'Nấm rơm', 'Cà rốt'] },
-    { name: 'Xôi bắp hạt sen dừa sợi', cost: 10000, calories: 360, ingredients: ['Nếp thơm', 'Bắp nếp', 'Hạt sen tươi', 'Mè rang', 'Đậu phộng'] },
-    { name: 'Cháo nấm hương hạt sen chay', cost: 12000, calories: 290, ingredients: ['Gạo tẻ', 'Hạt sen', 'Nấm hương', 'Hành hoa', 'Tiêu sọ'] }
+    { name: 'Bánh mì chả lụa chay & dưa leo', cost: 10000, calories: 310, image: 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=800', ingredients: ['Bánh mì', 'Chả lụa chay', 'Dưa leo', 'Ngò rí', 'Nước tương tỏi ớt'] },
+    { name: 'Bún xào chay rau cải nấm rơm', cost: 12000, calories: 350, image: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800', ingredients: ['Bún gạo', 'Cải ngọt', 'Đậu hũ chiên', 'Nấm rơm', 'Cà rốt'] },
+    { name: 'Xôi bắp hạt sen dừa sợi', cost: 10000, calories: 360, image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800', ingredients: ['Nếp thơm', 'Bắp nếp', 'Hạt sen tươi', 'Mè rang', 'Đậu phộng'] },
+    { name: 'Cháo nấm hương hạt sen chay', cost: 12000, calories: 290, image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800', ingredients: ['Gạo tẻ', 'Hạt sen', 'Nấm hương', 'Hành hoa', 'Tiêu sọ'] }
   ];
 
   const vegLunchList = [
-    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm trắng + Canh rau ngót', cost: 15000, calories: 460, ingredients: ['Đậu hũ mơ', 'Cà chua chín', 'Hành hoa', 'Rau ngót', 'Gạo thơm'] },
-    { name: 'Nấm rơm kho sả ớt + Canh chua chay + Cơm trắng', cost: 16000, calories: 450, ingredients: ['Nấm rơm', 'Sả ớt băm', 'Thơm (dứa)', 'Bạc hà', 'Đậu bắp'] },
-    { name: 'Bún riêu chay đậu hũ nấm rơm', cost: 18000, calories: 430, ingredients: ['Bún tươi', 'Riêu đậu nành', 'Đậu hũ chiên', 'Nấm rơm', 'Rau muống bào'] },
-    { name: 'Cơm chiên ngũ sắc rau củ hạt sen', cost: 15000, calories: 480, ingredients: ['Cơm nguội', 'Đậu Hà Lan', 'Cà rốt', 'Hạt sen', 'Nấm đùi gà'] }
+    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm trắng + Canh rau ngót', cost: 15000, calories: 460, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800', ingredients: ['Đậu hũ mơ', 'Cà chua chín', 'Hành hoa', 'Rau ngót', 'Gạo thơm'] },
+    { name: 'Nấm rơm kho sả ớt + Canh chua chay + Cơm trắng', cost: 16000, calories: 450, image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800', ingredients: ['Nấm rơm', 'Sả ớt băm', 'Thơm (dứa)', 'Bạc hà', 'Đậu bắp'] },
+    { name: 'Bún riêu chay đậu hũ nấm rơm', cost: 18000, calories: 430, image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800', ingredients: ['Bún tươi', 'Riêu đậu nành', 'Đậu hũ chiên', 'Nấm rơm', 'Rau muống bào'] },
+    { name: 'Cơm chiên ngũ sắc rau củ hạt sen', cost: 15000, calories: 480, image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800', ingredients: ['Cơm nguội', 'Đậu Hà Lan', 'Cà rốt', 'Hạt sen', 'Nấm đùi gà'] }
   ];
 
   const vegDinnerList = [
-    { name: 'Rau củ luộc ngũ sắc chấm kho quẹt chay + Cơm trắng', cost: 14000, calories: 380, ingredients: ['Bầu non', 'Cà rốt', 'Đậu bắp', 'Bông cải', 'Nước mắm chay kho quẹt', 'Tóp mỡ bánh mì'] },
-    { name: 'Canh bí đỏ đậu phộng + Đậu hũ chiên sả + Cơm trắng', cost: 13000, calories: 410, ingredients: ['Bí đỏ', 'Đậu phộng', 'Đậu hũ trắng', 'Sả ớt', 'Gạo thơm'] },
-    { name: 'Đậu hũ kho nấm đông cô + Canh cải bẹ xanh gừng tươi', cost: 15000, calories: 420, ingredients: ['Đậu hũ', 'Nấm đông cô', 'Cải bẹ xanh', 'Gừng tươi', 'Tiêu'] },
-    { name: 'Canh mướp hương mồng tơi nấm rơm + Cơm trắng', cost: 12000, calories: 360, ingredients: ['Mướp hương', 'Rau mồng tơi', 'Nấm rơm', 'Đậu phộng rang'] }
+    { name: 'Rau củ luộc ngũ sắc chấm kho quẹt chay + Cơm trắng', cost: 14000, calories: 380, image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800', ingredients: ['Bầu non', 'Cà rốt', 'Đậu bắp', 'Bông cải', 'Nước mắm chay kho quẹt', 'Tóp mỡ bánh mì'] },
+    { name: 'Canh bí đỏ đậu phộng + Đậu hũ chiên sả + Cơm trắng', cost: 13000, calories: 410, image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800', ingredients: ['Bí đỏ', 'Đậu phộng', 'Đậu hũ trắng', 'Sả ớt', 'Gạo thơm'] },
+    { name: 'Đậu hũ kho nấm đông cô + Canh cải bẹ xanh gừng tươi', cost: 15000, calories: 420, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800', ingredients: ['Đậu hũ', 'Nấm đông cô', 'Cải bẹ xanh', 'Gừng tươi', 'Tiêu'] },
+    { name: 'Canh mướp hương mồng tơi nấm rơm + Cơm trắng', cost: 12000, calories: 360, image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800', ingredients: ['Mướp hương', 'Rau mồng tơi', 'Nấm rơm', 'Đậu phộng rang'] }
   ];
 
-  // Standard non-veg Vietnamese dishes
+  // Standard non-veg Vietnamese dishes with images
   const standardBreakfast = [
-    { name: 'Bánh mì ốp la pate', cost: 12000, calories: 380, ingredients: ['Bánh mì', 'Trứng gà', 'Pate', 'Dưa leo'] },
-    { name: 'Xôi xéo mỡ hành ruốc', cost: 15000, calories: 420, ingredients: ['Gạo nếp', 'Đậu xanh', 'Hành phi', 'Ruốc thịt'] },
-    { name: 'Cháo sườn sụn quẩy giòn', cost: 15000, calories: 390, ingredients: ['Gạo tẻ', 'Sườn sụn', 'Quẩy giòn', 'Hành hoa'] }
+    { name: 'Bánh mì ốp la pate', cost: 12000, calories: 380, image: 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=800', ingredients: ['Bánh mì', 'Trứng gà', 'Pate', 'Dưa leo'] },
+    { name: 'Xôi xéo mỡ hành ruốc', cost: 15000, calories: 420, image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800', ingredients: ['Gạo nếp', 'Đậu xanh', 'Hành phi', 'Ruốc thịt'] },
+    { name: 'Cháo sườn sụn quẩy giòn', cost: 15000, calories: 390, image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800', ingredients: ['Gạo tẻ', 'Sườn sụn', 'Quẩy giòn', 'Hành hoa'] }
   ];
 
   const standardLunch = [
-    { name: 'Cơm rang dưa bò', cost: 22000, calories: 480, ingredients: ['Cơm', 'Thịt bò', 'Dưa chua', 'Trứng gà'] },
-    { name: 'Phở bò tái nạm', cost: 25000, calories: 450, ingredients: ['Bánh phở', 'Nạm bò', 'Hành tây', 'Rau thơm'] },
-    { name: 'Bún chả giò rau sống', cost: 22000, calories: 460, ingredients: ['Bún tươi', 'Chả giò', 'Rau sống', 'Nước mắm chua ngọt'] }
+    { name: 'Cơm rang dưa bò', cost: 22000, calories: 480, image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800', ingredients: ['Cơm', 'Thịt bò', 'Dưa chua', 'Trứng gà'] },
+    { name: 'Phở bò tái nạm', cost: 25000, calories: 450, image: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800', ingredients: ['Bánh phở', 'Nạm bò', 'Hành tây', 'Rau thơm'] },
+    { name: 'Bún chả giò rau sống', cost: 22000, calories: 460, image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800', ingredients: ['Bún tươi', 'Chả giò', 'Rau sống', 'Nước mắm chua ngọt'] }
   ];
 
   const standardDinner = [
-    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm', cost: 13000, calories: 350, ingredients: ['Đậu hũ', 'Cà chua', 'Cơm trắng', 'Hành hoa'] },
-    { name: 'Canh chua cá lóc + Cơm trắng', cost: 16000, calories: 360, ingredients: ['Cá lóc', 'Thơm', 'Cà chua', 'Đậu bắp', 'Cơm'] },
-    { name: 'Trứng chiên thịt băm + Canh rau cải', cost: 14000, calories: 410, ingredients: ['Trứng', 'Thịt heo băm', 'Rau cải', 'Gạo thơm'] }
+    { name: 'Đậu hũ sốt cà chua hành hoa + Cơm', cost: 13000, calories: 350, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800', ingredients: ['Đậu hũ', 'Cà chua', 'Cơm trắng', 'Hành hoa'] },
+    { name: 'Canh chua cá lóc + Cơm trắng', cost: 16000, calories: 360, image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800', ingredients: ['Cá lóc', 'Thơm', 'Cà chua', 'Đậu bắp', 'Cơm'] },
+    { name: 'Trứng chiên thịt băm + Canh rau cải', cost: 14000, calories: 410, image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800', ingredients: ['Trứng', 'Thịt heo băm', 'Rau cải', 'Gạo thơm'] }
   ];
 
   for (let d = 1; d <= countDays; d++) {

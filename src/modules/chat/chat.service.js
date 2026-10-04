@@ -240,12 +240,27 @@ ${existingList}
         };
       }
 
+      const getFallbackDishImage = (name = '') => {
+        const lower = name.toLowerCase();
+        if (lower.includes('bánh mì')) return 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=800';
+        if (lower.includes('phở')) return 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800';
+        if (lower.includes('bún')) return 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800';
+        if (lower.includes('cơm')) return 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800';
+        if (lower.includes('đậu hũ') || lower.includes('đậu phụ')) return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
+        if (lower.includes('nấm') || lower.includes('canh')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800';
+        if (lower.includes('rau') || lower.includes('kho quẹt')) return 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800';
+        if (lower.includes('chè') || lower.includes('xôi')) return 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800';
+        return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
+      };
+
       let slotsToApply = [];
       const extractSlot = (slotItem, slotName) => {
         if (!slotItem) return null;
+        const mealName = slotItem.meal || slotItem.name || 'Món ăn';
         return {
           slot: slotName,
-          meal: slotItem.meal || slotItem.name || 'Món ăn',
+          meal: mealName,
+          image: slotItem.image || getFallbackDishImage(mealName),
           cost: slotItem.cost || 0,
           calories: slotItem.calories || 0,
           ingredients: Array.isArray(slotItem.ingredients) ? slotItem.ingredients : []
@@ -389,9 +404,9 @@ ${appliedSummary}
       const daySlots = schedule.schedule[0].slots;
       // Cache proposed menu in session state so subsequent "áp dụng" command knows exactly what to write
       const formattedSlots = {
-        breakfast: daySlots.breakfast ? { ...daySlots.breakfast, slot: 'breakfast', meal: daySlots.breakfast.name } : null,
-        lunch: daySlots.lunch ? { ...daySlots.lunch, slot: 'lunch', meal: daySlots.lunch.name } : null,
-        dinner: daySlots.dinner ? { ...daySlots.dinner, slot: 'dinner', meal: daySlots.dinner.name } : null
+        breakfast: daySlots.breakfast ? { ...daySlots.breakfast, slot: 'breakfast', meal: daySlots.breakfast.name, image: daySlots.breakfast.image } : null,
+        lunch: daySlots.lunch ? { ...daySlots.lunch, slot: 'lunch', meal: daySlots.lunch.name, image: daySlots.lunch.image } : null,
+        dinner: daySlots.dinner ? { ...daySlots.dinner, slot: 'dinner', meal: daySlots.dinner.name, image: daySlots.dinner.image } : null
       };
       setSessionState(effectiveSessionId, 'proposedMenu', formattedSlots);
       setSessionState(effectiveSessionId, 'proposedDate', targetDate);
