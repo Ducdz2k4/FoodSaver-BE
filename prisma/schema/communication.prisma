@@ -1,0 +1,51 @@
+model OrderChatThread {
+  id         String             @id @default(uuid())
+  orderId    String             @unique
+  partnerId  String
+  customerId String
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  messages   OrderChatMessage[]
+  order      Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([customerId])
+  @@map("order_chat_threads")
+}
+
+model OrderChatMessage {
+  id         String          @id @default(uuid())
+  threadId   String
+  senderId   String          @db.VarChar(36)
+  senderRole String          @default("CUSTOMER") @db.VarChar(20)
+  message    String          @db.Text
+  createdAt  DateTime        @default(now())
+
+  thread OrderChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("order_chat_messages")
+}
+
+enum CallEventType {
+  CALL_INITIATED
+  CALL_CONNECTED
+  CALL_ENDED
+  CALL_MISSED
+}
+
+model OrderCallEvent {
+  id          String        @id @default(uuid())
+  orderId     String
+  callerId    String        @db.VarChar(36)
+  receiverId  String        @db.VarChar(36)
+  eventType   CallEventType
+  durationSec Int           @default(0)
+  createdAt   DateTime      @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_call_events")
+}

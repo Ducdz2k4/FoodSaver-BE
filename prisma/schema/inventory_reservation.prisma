@@ -1,0 +1,28 @@
+enum ReservationStatus {
+  RESERVED
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+model InventoryReservation {
+  id         String            @id @default(uuid())
+  orderId    String?
+  listingId  String
+  quantity   Int               @default(1)
+  expiresAt  DateTime
+  status     ReservationStatus @default(RESERVED)
+  releasedAt DateTime?
+  note       String?           @db.VarChar(255)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  listing Listing  @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([listingId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("inventory_reservations")
+}

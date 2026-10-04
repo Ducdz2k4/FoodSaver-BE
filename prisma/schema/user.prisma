@@ -36,6 +36,8 @@ model User {
   auditLogs      AuditLog[]
   otpCodes       OtpCode[]
   favorites      Favorite[]
+  trust          UserTrust?
+  trustEvents    TrustEvent[]
 
   @@index([role])
   @@index([status])

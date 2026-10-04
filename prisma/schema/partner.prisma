@@ -35,6 +35,9 @@ model PartnerProfile {
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   listings Listing[]
+  wallet PartnerWallet?
+  receivable PartnerReceivable?
+  payouts Payout[]
 
   @@index([verificationStatus])
   @@index([geohash])
