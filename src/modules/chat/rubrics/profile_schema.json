@@ -1,0 +1,34 @@
+{
+  "fields": [
+    {
+      "key": "address_form",
+      "label": "Cách xưng hô",
+      "priority": 1,
+      "ask_prompt": "Bạn muốn mình xưng hô thế nào cho thoải mái nhất (bạn/mình, anh/em, chị/em)?"
+    },
+    {
+      "key": "dietary_goal",
+      "label": "Mục tiêu ăn uống",
+      "priority": 2,
+      "ask_prompt": "Mục tiêu chính của bạn tháng này là tiết kiệm tiền, ăn ngon đủ chất, hay giảm cân/tăng cơ?"
+    },
+    {
+      "key": "daily_budget_target",
+      "label": "Mức chi tiêu ăn uống trung bình mong muốn",
+      "priority": 3,
+      "ask_prompt": "Bạn thường muốn phân bổ khoảng bao nhiêu tiền cho việc ăn uống mỗi ngày?"
+    },
+    {
+      "key": "allergies",
+      "label": "Dị ứng hoặc kiêng kỵ thực phẩm",
+      "priority": 4,
+      "ask_prompt": "Bạn có bị dị ứng hoặc cần kiêng loại thực phẩm nào (như hải sản, đậu phộng, bò...) không?"
+    },
+    {
+      "key": "cooking_habit",
+      "label": "Thói quen nấu nướng",
+      "priority": 5,
+      "ask_prompt": "Bạn thường tự nấu cơm ở nhà, nấu 1 lần ăn cả ngày hay chủ yếu mua đồ ăn bên ngoài?"
+    }
+  ]
+}
