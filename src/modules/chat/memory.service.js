@@ -79,6 +79,30 @@ export function appendSessionTurn(sessionId, role, content) {
  * Async Memory Extractor
  * Uses JEV memory_worthiness rubric to evaluate whether user message contains facts worth saving
  */
+/**
+ * Explicitly save user fact (called by controllers/handlers)
+ */
+export function saveUserFact(effectiveId, key, value, ttlDays = null) {
+  if (!userFactsStore.has(effectiveId)) {
+    userFactsStore.set(effectiveId, new Map());
+  }
+  const store = userFactsStore.get(effectiveId);
+  const existing = store.get(key);
+  if (existing) {
+    existing.isSuperseded = true;
+  }
+  store.set(key, {
+    key,
+    value,
+    confidence: 1.0,
+    jevScore: 1.0,
+    createdAt: new Date().toISOString(),
+    ttlDays,
+    isSuperseded: false
+  });
+  console.log(`[Memory Engine] Explicitly saved fact for ${effectiveId}: ${key} = "${value}"`);
+}
+
 export async function extractAndSaveMemoryAsync({ userId, sessionId, message }) {
   const effectiveId = userId || sessionId || 'anonymous';
   const stripped = stripVietnamese(message);

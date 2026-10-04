@@ -121,22 +121,80 @@ export async function searchRecipes({ query = '', limit = 5 } = {}) {
  */
 export async function generateMealSchedule({ days = 3, budget = 150000, people = 1 }) {
   const dailyBudget = Math.floor(budget / days / people);
-  const recipes = await prisma.recipe.findMany({ take: 16 });
+  let dbRecipes = [];
+  try {
+    dbRecipes = await prisma.recipe.findMany({ take: 16 });
+  } catch {
+    dbRecipes = [];
+  }
+
+  // Pre-categorize DB recipes
+  const breakfasts = dbRecipes.filter(r => r.category === 'an-sang');
+  const mainMeals = dbRecipes.filter(r => r.category === 'com' || r.category === 'bun-pho');
+  const lightMeals = dbRecipes.filter(r => r.category === 'chay' || r.category === 'salad');
 
   const schedule = [];
-  for (let d = 1; d <= Math.min(days, 7); d++) {
-    const breakfast = recipes[(d - 1) % recipes.length] || { name: 'Bánh mì ốp la', cost: 12000, calories: 350 };
-    const lunch = recipes[(d) % recipes.length] || { name: 'Cơm tấm sườn', cost: 25000, calories: 650 };
-    const dinner = recipes[(d + 1) % recipes.length] || { name: 'Canh chua cá lóc', cost: 22000, calories: 500 };
+  const countDays = Math.min(days, 7);
+
+  for (let d = 1; d <= countDays; d++) {
+    let breakfast, lunch, dinner;
+
+    if (dailyBudget >= 45000) {
+      // Standard to Generous Budget: Full DB Dishes
+      const bItem = (breakfasts.length > 0 ? breakfasts[(d - 1) % breakfasts.length] : null) || { name: 'Bánh mì ốp la pate', cost: 15000, calories: 380 };
+      const lItem = (mainMeals.length > 0 ? mainMeals[(d - 1) % mainMeals.length] : null) || { name: 'Cơm rang dưa bò', cost: 25000, calories: 480 };
+      const dItem = (lightMeals.length > 0 ? lightMeals[(d - 1) % lightMeals.length] : null) || { name: 'Đậu hũ sốt cà chua hành hoa', cost: 16000, calories: 260 };
+
+      breakfast = { name: bItem.name, cost: bItem.cost, calories: bItem.calories };
+      lunch = { name: lItem.name, cost: lItem.cost, calories: lItem.calories };
+      dinner = { name: dItem.name, cost: dItem.cost, calories: dItem.calories };
+    } else if (dailyBudget >= 22000) {
+      // Smart Saving Budget (~22k - 40k/day): Home Cooking & Rescue Deals
+      const bOptions = [
+        { name: 'Bánh mì trứng ốp la', cost: 8000, calories: 320 },
+        { name: 'Xôi đậu phộng vừng dừa', cost: 10000, calories: 350 },
+        { name: 'Bánh mì pate trứng tự làm', cost: 9000, calories: 330 }
+      ];
+      const lOptions = [
+        { name: 'Đậu hũ sốt cà chua + Cơm trắng', cost: 10000, calories: 420 },
+        { name: 'Cơm rang trứng hành hoa + Dưa góp', cost: 10000, calories: 450 },
+        { name: 'Suất cơm trưa đối tác FoodSaver (Giờ vàng)', cost: 12000, calories: 480 }
+      ];
+      const dOptions = [
+        { name: 'Canh rau cải thịt băm + Trứng luộc', cost: 7000, calories: 350 },
+        { name: 'Trứng chiên nước mắm + Rau muống xào tỏi', cost: 7000, calories: 360 },
+        { name: 'Canh đậu hũ rong biển + Cơm trắng', cost: 6500, calories: 330 }
+      ];
+
+      breakfast = bOptions[(d - 1) % bOptions.length];
+      lunch = lOptions[(d - 1) % lOptions.length];
+      dinner = dOptions[(d - 1) % dOptions.length];
+    } else {
+      // Ultra-economical Bare Saving (~18k/day): Survival Nutrient Density
+      const bOptions = [
+        { name: 'Bánh mì không + 1 quả trứng luộc', cost: 6000, calories: 280 },
+        { name: 'Cháo trắng hột vịt muối / ruốc', cost: 5500, calories: 260 }
+      ];
+      const lOptions = [
+        { name: 'Đậu hũ chiên sả + Rau muống luộc + Cơm', cost: 6500, calories: 400 },
+        { name: 'Trứng chiên hành + Cơm trắng', cost: 6500, calories: 390 }
+      ];
+      const dOptions = [
+        { name: 'Canh rau cải xanh + Nước mắm tỏi ớt + Cơm', cost: 5500, calories: 320 },
+        { name: 'Đậu hũ kho tương + Canh bí đỏ', cost: 5500, calories: 340 }
+      ];
+
+      breakfast = bOptions[(d - 1) % bOptions.length];
+      lunch = lOptions[(d - 1) % lOptions.length];
+      dinner = dOptions[(d - 1) % dOptions.length];
+    }
+
+    const dayTotalCost = breakfast.cost + lunch.cost + dinner.cost;
 
     schedule.push({
       day: d,
-      slots: {
-        breakfast: { name: breakfast.name, cost: Math.min(dailyBudget * 0.25, breakfast.cost || 12000), calories: breakfast.calories || 350 },
-        lunch: { name: lunch.name, cost: Math.min(dailyBudget * 0.45, lunch.cost || 25000), calories: lunch.calories || 650 },
-        dinner: { name: dinner.name, cost: Math.min(dailyBudget * 0.30, dinner.cost || 20000), calories: dinner.calories || 500 }
-      },
-      dayTotalCost: Math.min(dailyBudget, (breakfast.cost || 12000) + (lunch.cost || 25000) + (dinner.cost || 20000))
+      slots: { breakfast, lunch, dinner },
+      dayTotalCost
     });
   }
 
