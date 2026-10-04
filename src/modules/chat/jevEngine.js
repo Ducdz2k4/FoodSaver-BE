@@ -10,6 +10,15 @@ const __dirname = path.dirname(__filename);
 const RUBRICS_DIR = path.join(__dirname, 'rubrics');
 const rubricsCache = new Map();
 
+export function stripVN(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .trim();
+}
+
 export function loadRubric(rubricId) {
   if (rubricsCache.has(rubricId)) {
     return rubricsCache.get(rubricId);
@@ -25,10 +34,6 @@ export function loadRubric(rubricId) {
 
 /**
  * Universal JEV Decision Engine
- * Evaluates any rubric (Choice, Score, Noul) against a given state
- * @param {string} rubricId - ID of rubric ('pre_router', 'feasibility', 'safety_guard', 'memory_worthiness')
- * @param {Object} state - Context and parameters for evaluation
- * @returns {Promise<{ decision: string, score: number, isPassed: boolean, confidence: number, details: any, modelUsed: string }>}
  */
 export async function executeJev(rubricId, state) {
   const rubric = loadRubric(rubricId);
@@ -123,60 +128,106 @@ async function callRemoteJev(rubric, state) {
  * Calibrated local evaluation based on real statistical weights and text features
  */
 function evaluateLocally(rubric, state) {
-  const normText = (state.message || state.query || state.input || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd');
+  const normText = stripVN(state.message || state.query || state.input || '');
 
   switch (rubric.id) {
     case 'pre_router': {
       let decision = 'QA_INFO';
       let confidence = 0.85;
 
-      // Chitchat detection
-      const chitchatPatterns = ['chao', 'hello', 'hi', 'cam on', 'thank', 'ban la ai', 'tam biet', 'chuc ngu ngon', 'khoi qua'];
-      if (chitchatPatterns.some(p => normText.includes(p)) && normText.length < 35 && !normText.includes('an') && !normText.includes('mon')) {
+      // 0. System feedback / frustration / mock data inquiry
+      if (
+        normText.includes('ngao') ||
+        normText.includes('bi loi') ||
+        normText.includes('mock data') ||
+        normText.includes('du lieu gia') ||
+        normText.includes('du lieu fake') ||
+        normText.includes('co van de') ||
+        normText.includes('sao lap') ||
+        normText.includes('lap lai') ||
+        normText.includes('lap hoai') ||
+        normText.includes('tra loi linh tinh') ||
+        normText.includes('tra loi kieu gi') ||
+        normText.includes('bot cui') ||
+        normText.includes('bi ngoc') ||
+        (normText.includes('gi vay') && !normText.includes('an gi')) ||
+        (normText.includes('gi day') && !normText.includes('an gi'))
+      ) {
+        decision = 'SYSTEM_FEEDBACK';
+        confidence = 0.98;
+      }
+      // 1. Profile / Address form update
+      else
+      if (
+        normText.includes('xung ho') ||
+        normText.includes('anh em') ||
+        normText.includes('chi em') ||
+        normText.includes('ban minh') ||
+        normText.includes('em anh') ||
+        normText.includes('goi anh') ||
+        normText.includes('goi chi') ||
+        normText.includes('goi em') ||
+        normText.includes('goi minh') ||
+        normText.includes('di ung') ||
+        normText.includes('kieng an') ||
+        normText.includes('khong an duoc') ||
+        normText.includes('toi ten la') ||
+        normText.includes('minh ten la')
+      ) {
+        decision = 'PROFILE_UPDATE';
+        confidence = 0.98;
+      }
+      // 2. Chitchat detection
+      else if (
+        (normText === 'chao' || normText === 'hello' || normText === 'hi' || normText === 'chao ban' || normText.includes('cam on') || normText.includes('ban la ai') || normText.includes('tam biet')) &&
+        !normText.includes('an') && !normText.includes('mon') && !normText.includes('k') && !normText.includes('trieu')
+      ) {
         decision = 'CHITCHAT';
         confidence = 0.95;
       }
-      // Meal planning & Budget detection
+      // 3. Meal planning & Budget detection
       else if (
-        normText.includes('ke hoach') ||
-        normText.includes('ngan sach') ||
-        normText.includes('thuc don') ||
-        normText.includes('an gi') ||
-        normText.includes('1 ngay') ||
-        normText.includes('1 thang') ||
-        normText.includes('1 tuan') ||
         normText.includes('50k') ||
         normText.includes('100k') ||
         normText.includes('trieu') ||
+        normText.includes('nghin') ||
+        normText.includes('ngan') ||
+        normText.includes('du chat') ||
+        normText.includes('thuc don') ||
+        normText.includes('ke hoach') ||
         normText.includes('chi tieu') ||
-        normText.includes('tiet kiem')
+        normText.includes('an gi') ||
+        normText.includes('ap dung ke hoach') ||
+        normText.includes('len thuc don') ||
+        normText.includes('1 ngay') ||
+        normText.includes('2 ngay') ||
+        normText.includes('3 ngay') ||
+        normText.includes('5 ngay') ||
+        normText.includes('7 ngay') ||
+        normText.includes('1 thang') ||
+        normText.includes('/ngay') ||
+        normText.includes('/thang')
       ) {
         decision = 'MEAL_PLAN_BUDGET';
-        confidence = 0.92;
+        confidence = 0.95;
       }
-      // Rescue deal search
+      // 4. Rescue deal search
       else if (
         normText.includes('giai cuu') ||
         normText.includes('can date') ||
         normText.includes('gio vang') ||
         normText.includes('giam gia') ||
         normText.includes('quan nao') ||
-        normText.includes('gan day') ||
         normText.includes('deal')
       ) {
         decision = 'RESCUE_DEAL_SEARCH';
         confidence = 0.90;
       }
-      // Calendar write action
+      // 5. Calendar write action
       else if (
         normText.includes('luu vao lich') ||
         normText.includes('xep lich') ||
-        normText.includes('them vao lich') ||
-        normText.includes('len lich cho ngay')
+        normText.includes('them vao lich')
       ) {
         decision = 'WRITE_CALENDAR';
         confidence = 0.94;
@@ -195,22 +246,39 @@ function evaluateLocally(rubric, state) {
     case 'feasibility': {
       const budget = Number(state.targetBudget) || 0;
       const days = Number(state.days) || 1;
-      const minEstimatedCost = Number(state.minEstimatedCost) || (days * 18000); // 18k/day absolute bare minimum
       const people = Number(state.people) || 1;
 
-      const totalMinRequired = minEstimatedCost * people;
-      const costRatio = budget > 0 ? (budget / totalMinRequired) : 1.0;
+      // Realistic daily budget per person
+      const dailyBudgetPerPerson = Math.floor(budget / days / people);
 
-      let score = Math.min(1.0, Math.max(0.0, Number(costRatio.toFixed(2))));
-      let isFeasible = score >= 0.70;
+      // Benchmarks:
+      // >= 50k: Generous / comfortable
+      // 35k - 49k: Balanced standard
+      // 18k - 34k: Economical survival / smart saving (100% possible with meal prep)
+      // 10k - 17k: Extremely tight (requires deep discount / rescue deals)
+      // < 10k: Deficient / impossible for full daily calorie
+      let score = 0;
+      if (dailyBudgetPerPerson >= 50000) {
+        score = 1.0;
+      } else if (dailyBudgetPerPerson >= 35000) {
+        score = 0.88;
+      } else if (dailyBudgetPerPerson >= 22000) {
+        score = 0.78;
+      } else if (dailyBudgetPerPerson >= 18000) {
+        score = 0.72;
+      } else if (dailyBudgetPerPerson >= 12000) {
+        score = 0.45;
+      } else {
+        score = Number(Math.max(0.05, (dailyBudgetPerPerson / 18000) * 0.4).toFixed(2));
+      }
+
+      const isFeasible = score >= 0.70;
       let decision = 'PASS';
 
       if (score < 0.25) {
         decision = 'IMPOSSIBLE';
-        isFeasible = false;
       } else if (score < 0.70) {
         decision = 'NEGOTIATE';
-        isFeasible = false;
       }
 
       return {
@@ -222,11 +290,10 @@ function evaluateLocally(rubric, state) {
           budget,
           days,
           people,
-          totalMinRequired,
-          costRatio: Number(costRatio.toFixed(2)),
+          dailyBudgetPerPerson,
           suggestedAdjustment: {
             realisticDaysForBudget: Math.max(1, Math.floor(budget / (18000 * people))),
-            recommendedBudgetForDays: totalMinRequired,
+            recommendedBudgetForDays: 18000 * days * people,
           }
         },
         modelUsed: 'jev-local-calibrated'
@@ -237,13 +304,11 @@ function evaluateLocally(rubric, state) {
       let isSafe = true;
       let score = 1.0;
 
-      // Injection attempts
       if (normText.includes('ignore previous') || normText.includes('bo qua huong dan') || normText.includes('system prompt')) {
         isSafe = false;
         score = 0.0;
       }
 
-      // Dangerous food prep
       if (normText.includes('thiu') || normText.includes('moc') || normText.includes('chay den') || normText.includes('doc')) {
         score = 0.4;
       }
@@ -259,17 +324,14 @@ function evaluateLocally(rubric, state) {
     }
 
     case 'memory_worthiness': {
-      let score = 0.2; // default: casual chat, not worth permanent storing
+      let score = 0.2;
 
-      // User explicit preference
       if (normText.includes('di ung') || normText.includes('khong an duoc') || normText.includes('an chay')) {
         score = 0.95;
-      } else if (normText.includes('toi la') || normText.includes('minh ten la') || normText.includes('xung ho')) {
-        score = 0.90;
-      } else if (normText.includes('ngan sach cua toi') || normText.includes('moi ngay toi tieu') || normText.includes('1 thang toi co')) {
+      } else if (normText.includes('xung ho') || normText.includes('anh em') || normText.includes('chi em') || normText.includes('ban minh')) {
+        score = 0.95;
+      } else if (normText.includes('ngan sach') || normText.includes('moi ngay tieu') || normText.includes('1 thang')) {
         score = 0.85;
-      } else if (normText.includes('thich an') || normText.includes('ghét an')) {
-        score = 0.70;
       }
 
       return {
