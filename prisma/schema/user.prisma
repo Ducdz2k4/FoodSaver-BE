@@ -38,6 +38,7 @@ model User {
   favorites      Favorite[]
   trust          UserTrust?
   trustEvents    TrustEvent[]
+  chatSessions   ChatSession[]
 
   @@index([role])
   @@index([status])
@@ -60,6 +61,7 @@ model UserProfile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([defaultLat, defaultLng])
   @@map("user_profiles")
 }
 
