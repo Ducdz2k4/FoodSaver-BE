@@ -1,0 +1,190 @@
+name: Backend CI-CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, quang-duc]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: foodsaver-backend
+  REPO_URL: https://github.com/Ducdz2k4/FoodSaver-BE.git
+  DEPLOY_DIR: /opt/foodsaver-be
+
+jobs:
+  lint-and-validate:
+    name: Lint & Prisma Validation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Validate Prisma Schema
+        env:
+          DATABASE_URL: "mysql://mock_user:mock_pass@localhost:3306/mock_db"
+        run: npx prisma validate --schema=prisma/schema
+
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: "mysql://mock_user:mock_pass@localhost:3306/mock_db"
+        run: npx prisma generate --schema=prisma/schema
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-24.04
+    needs: lint-and-validate
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Docker Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:latest \
+            .
+
+  deploy:
+    name: Deploy to Production VPS
+    runs-on: ubuntu-24.04
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+          SERVER_USER: ${{ secrets.SERVER_USER || 'ubuntu' }}
+          # Database & Server Config
+          PORT: ${{ secrets.PORT || '5000' }}
+          NODE_ENV: production
+          API_PREFIX: /api/v1
+          PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN || '*' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # JWT Secrets
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN || '7d' }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN || '30d' }}
+          # Cloudinary Media Storage
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          # AI Services (TypeSafe JEV & Groq)
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          JEV_API_URL: ${{ secrets.JEV_API_URL || 'https://api.typesafe.ai/v1/systemone' }}
+          JEV_MODEL: ${{ secrets.JEV_MODEL || 'jev-latest' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL || 'openai/gpt-oss-120b' }}
+          GROQ_API_URL: ${{ secrets.GROQ_API_URL || 'https://api.groq.com/openai/v1' }}
+          # SMTP Email
+          SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          # Google OAuth
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error ::SSH_PRIVATE_KEY secret is not configured in GitHub Secrets!"
+            exit 1
+          fi
+          if [ -z "$SERVER_HOST" ]; then
+            echo "::error ::SERVER_HOST secret is not configured in GitHub Secrets!"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/id_rsa -p "$SERVER_PORT" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
+            set -e
+            echo '🚀 Starting deployment for FoodSaver Backend...'
+
+            # Ensure Docker daemon is running
+            sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+            sudo usermod -aG docker \$USER 2>/dev/null || true
+
+            # Clone or update repository
+            if [ ! -d '${{ env.DEPLOY_DIR }}' ]; then
+              sudo mkdir -p '${{ env.DEPLOY_DIR }}'
+              sudo chown -R \$USER:\$USER '${{ env.DEPLOY_DIR }}'
+              git clone '${{ env.REPO_URL }}' '${{ env.DEPLOY_DIR }}'
+            fi
+
+            cd '${{ env.DEPLOY_DIR }}'
+            git remote set-url origin '${{ env.REPO_URL }}' || true
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Write production .env file from secrets
+            {
+              echo \"PORT=$PORT\"
+              echo \"NODE_ENV=$NODE_ENV\"
+              echo \"API_PREFIX=$API_PREFIX\"
+              echo \"PAYMENT_WEBHOOK_SECRET=$PAYMENT_WEBHOOK_SECRET\"
+              echo \"CORS_ORIGIN=$CORS_ORIGIN\"
+              echo \"\"
+              echo \"DATABASE_URL=$DATABASE_URL\"
+              echo \"\"
+              echo \"JWT_SECRET=$JWT_SECRET\"
+              echo \"JWT_EXPIRES_IN=$JWT_EXPIRES_IN\"
+              echo \"JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET\"
+              echo \"JWT_REFRESH_EXPIRES_IN=$JWT_REFRESH_EXPIRES_IN\"
+              echo \"\"
+              echo \"CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME\"
+              echo \"CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY\"
+              echo \"CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET\"
+              echo \"\"
+              echo \"JEV_API_KEY=$JEV_API_KEY\"
+              echo \"JEV_API_URL=$JEV_API_URL\"
+              echo \"JEV_MODEL=$JEV_MODEL\"
+              echo \"GROQ_API_KEY=$GROQ_API_KEY\"
+              echo \"GROQ_MODEL=$GROQ_MODEL\"
+              echo \"GROQ_API_URL=$GROQ_API_URL\"
+              echo \"\"
+              echo \"SMTP_HOST=$SMTP_HOST\"
+              echo \"SMTP_PORT=$SMTP_PORT\"
+              echo \"SMTP_USER=$SMTP_USER\"
+              echo \"SMTP_PASS=$SMTP_PASS\"
+              echo \"\"
+              echo \"GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID\"
+            } > .env
+
+            # Build and restart Docker Compose services
+            echo '🐳 Building and restarting Docker Compose services...'
+            docker compose build api
+            docker compose up -d --remove-orphans
+
+            echo '⏳ Running Prisma database migrations in container...'
+            docker compose exec -T api npx prisma db push || true
+
+            echo '⏳ Checking container status...'
+            sleep 5
+            docker compose ps
+            echo '📋 Container logs (api):'
+            docker compose logs --tail=100 api
+
+            echo '✅ Backend deployment completed successfully!'
+          "
