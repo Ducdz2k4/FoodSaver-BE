@@ -39,7 +39,7 @@ function stripVietnamese(str) {
 /**
  * Context Builder (< 30ms parallel assembly)
  */
-export async function buildContext({ userId, sessionId, currentMessage }) {
+export async function buildContext({ userId, sessionId, currentMessage, user = null }) {
   const effectiveId = userId || sessionId || 'anonymous';
 
   // 1. Get recent session history (last 8 turns)
@@ -55,6 +55,11 @@ export async function buildContext({ userId, sessionId, currentMessage }) {
     }
   }
 
+  // Tích hợp an toàn thông tin người dùng đã xác thực (Tên hiển thị)
+  if (user?.fullName && !activeFacts.user_name) {
+    activeFacts.user_name = user.fullName;
+  }
+
   // 3. Question Engine: Calculate missing fields & determine if we should ask
   const missingFields = profileSchema.fields.filter(f => !activeFacts[f.key]);
   missingFields.sort((a, b) => a.priority - b.priority);
@@ -62,6 +67,8 @@ export async function buildContext({ userId, sessionId, currentMessage }) {
   return {
     userId: effectiveId,
     profile: activeFacts,
+    userName: user?.fullName || null,
+    isGuest: !userId,
     recentTurns,
     missingFields,
     suggestedQuestion: missingFields.length > 0 ? missingFields[0] : null
@@ -86,10 +93,6 @@ export function appendSessionTurn(sessionId, role, content) {
   }
 }
 
-/**
- * Async Memory Extractor
- * Uses JEV memory_worthiness rubric to evaluate whether user message contains facts worth saving
- */
 /**
  * Explicitly save user fact (called by controllers/handlers)
  */
@@ -117,7 +120,6 @@ export function saveUserFact(effectiveId, key, value, ttlDays = null) {
 export async function extractAndSaveMemoryAsync({ userId, sessionId, message }) {
   const effectiveId = userId || sessionId || 'anonymous';
   const stripped = stripVietnamese(message);
-
   const candidateFacts = [];
 
   // Address form detection

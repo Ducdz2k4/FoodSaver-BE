@@ -112,12 +112,12 @@ export function parseBudgetAndDays(text) {
 /**
  * Prepares Context, JEV Pre-Router, Tools & LLM Prompt
  */
-export async function prepareChatPipeline({ message, userId, sessionId }) {
+export async function prepareChatPipeline({ message, userId, sessionId, user = null }) {
   const effectiveSessionId = getChatSessionId(userId, sessionId);
 
   appendSessionTurn(effectiveSessionId, 'user', message);
 
-  const context = await buildContext({ userId, sessionId: effectiveSessionId, currentMessage: message });
+  const context = await buildContext({ userId, sessionId: effectiveSessionId, currentMessage: message, user });
 
   let userPronoun = context.profile.address_form || 'bạn';
   let botPronoun = context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
@@ -179,142 +179,163 @@ export async function prepareChatPipeline({ message, userId, sessionId }) {
     const targetDate = resolveDateFromText(message) || getSessionState(effectiveSessionId, 'targetDate') || '2026-10-05';
     setSessionState(effectiveSessionId, 'targetDate', targetDate);
 
-    // Read user calendar from Database
-    const calData = await readUserCalendar({ date: targetDate, userId });
-
-    const isConfirmedAll = norm.includes('thay the toan bo') || norm.includes('thay toan bo') || norm.includes('dong y thay') || norm.includes('thay het');
-    const isOnlyLunch = norm.includes('bua trua') || norm.includes('trua');
-    const isOnlyDinner = norm.includes('bua toi') || norm.includes('toi');
-    const isOnlyBreakfast = norm.includes('bua sang') || norm.includes('sang');
-    const isKeepOld = norm.includes('giu nguyen') || norm.includes('khong thay doi');
-
-    if (isKeepOld) {
+    // Kiểm tra định danh: Khách vãng lai không được ghi vào Lịch ăn cá nhân
+    if (!userId) {
       systemDirective = `[JEV Calendar Action Directives]:
+- Người dùng yêu cầu lưu thực đơn vào Lịch ăn nhưng hiện tại đang ở CHẾ ĐỘ KHÁCH (chưa đăng nhập).
+- Nhẹ nhàng giải thích rằng để lưu thực đơn vào Lịch ăn tháng cá nhân và đồng bộ danh sách đi chợ, ${userPronoun} cần đăng nhập tài khoản FoodSaver.
+- Mời ${userPronoun} đăng nhập để sử dụng tính năng đồng bộ lịch ăn.`;
+
+      richCards = {
+        type: 'auth_required',
+        data: {
+          message: 'Vui lòng đăng nhập tài khoản FoodSaver để lưu thực đơn vào Lịch ăn cá nhân của bạn.',
+          returnUrl: '/meal-planner/chat'
+        }
+      };
+
+      quickSuggestions = [
+        'Đăng nhập ngay',
+        'Đổi món khác',
+        'Xem danh sách nguyên liệu đi chợ'
+      ];
+    } else {
+      // Đã đăng nhập: Read user calendar from Database
+      const calData = await readUserCalendar({ date: targetDate, userId });
+
+      const isConfirmedAll = norm.includes('thay the toan bo') || norm.includes('thay toan bo') || norm.includes('dong y thay') || norm.includes('thay het');
+      const isOnlyLunch = norm.includes('bua trua') || norm.includes('trua');
+      const isOnlyDinner = norm.includes('bua toi') || norm.includes('toi');
+      const isOnlyBreakfast = norm.includes('bua sang') || norm.includes('sang');
+      const isKeepOld = norm.includes('giu nguyen') || norm.includes('khong thay doi');
+
+      if (isKeepOld) {
+        systemDirective = `[JEV Calendar Action Directives]:
 - Người dùng chọn giữ nguyên lịch ăn cũ ngày ${formatDateVN(targetDate)}.
 - Hãy xác nhận lịch ăn cũ được giữ nguyên, thể hiện sự vui vẻ và sẵn sàng hỗ trợ các câu hỏi khác.`;
-      quickSuggestions = [
-        'Lên thực đơn ngày kia (06/10)',
-        'Tìm quán giải cứu gần tôi',
-        'Kiểm tra chi tiêu tuần này'
-      ];
-    } else if (calData.hasExisting && !isConfirmedAll && !isOnlyLunch && !isOnlyDinner && !isOnlyBreakfast) {
-      // Conflict Detected! Prompt user for selective replacement
-      const existingList = [
-        calData.existingSlots.breakfast ? `- 🌅 Bữa sáng: **${calData.existingSlots.breakfast.meal}** (~${formatVND(calData.existingSlots.breakfast.cost)})` : null,
-        calData.existingSlots.lunch ? `- ☀️ Bữa trưa: **${calData.existingSlots.lunch.meal}** (~${formatVND(calData.existingSlots.lunch.cost)})` : null,
-        calData.existingSlots.dinner ? `- 🌙 Bữa tối: **${calData.existingSlots.dinner.meal}** (~${formatVND(calData.existingSlots.dinner.cost)})` : '- 🌙 Bữa tối: *Chưa lên lịch*',
-        calData.existingSlots.snack ? `- 🍎 Bữa phụ: **${calData.existingSlots.snack.meal}** (~${formatVND(calData.existingSlots.snack.cost)})` : null
-      ].filter(Boolean).join('\n');
+        quickSuggestions = [
+          'Lên thực đơn ngày kia (06/10)',
+          'Tìm quán giải cứu gần tôi',
+          'Kiểm tra chi tiêu tuần này'
+        ];
+      } else if (calData.hasExisting && !isConfirmedAll && !isOnlyLunch && !isOnlyDinner && !isOnlyBreakfast) {
+        // Conflict Detected! Prompt user for selective replacement
+        const existingList = [
+          calData.existingSlots.breakfast ? `- 🌅 Bữa sáng: **${calData.existingSlots.breakfast.meal}** (~${formatVND(calData.existingSlots.breakfast.cost)})` : null,
+          calData.existingSlots.lunch ? `- ☀️ Bữa trưa: **${calData.existingSlots.lunch.meal}** (~${formatVND(calData.existingSlots.lunch.cost)})` : null,
+          calData.existingSlots.dinner ? `- 🌙 Bữa tối: **${calData.existingSlots.dinner.meal}** (~${formatVND(calData.existingSlots.dinner.cost)})` : '- 🌙 Bữa tối: *Chưa lên lịch*',
+          calData.existingSlots.snack ? `- 🍎 Bữa phụ: **${calData.existingSlots.snack.meal}** (~${formatVND(calData.existingSlots.snack.cost)})` : null
+        ].filter(Boolean).join('\n');
 
-      systemDirective = `[JEV Calendar Conflict Directives]:
+        systemDirective = `[JEV Calendar Conflict Directives]:
 - Trạng thái: Trong cơ sở dữ liệu hệ thống, ngày ${formatDateVN(targetDate)} đã có sẵn các món sau:
 ${existingList}
 - Hãy thông báo chi tiết danh sách món đã có cho ${userPronoun}.
 - Hỏi ${userPronoun} có muốn thay thế các món này bằng thực đơn mới không, và hỏi ${userPronoun} muốn thay thế toàn bộ hay chỉ đổi một bữa cụ thể (sáng / trưa / tối)?
 - Trình bày lịch sự, thân thiện, rõ ràng.`;
 
-      richCards = {
-        type: 'calendar_conflict',
-        data: {
-          date: targetDate,
-          formattedDate: formatDateVN(targetDate),
-          existing: calData.existingSlots
-        }
-      };
-
-      quickSuggestions = [
-        'Thay thế toàn bộ ngày mai',
-        'Chỉ thay thế Bữa trưa',
-        'Chỉ thay thế Bữa tối',
-        'Chỉ thay thế Bữa sáng',
-        'Giữ nguyên lịch cũ'
-      ];
-    } else {
-      // Confirmed or No conflict: Execute DB Write!
-      let proposedMenu = getSessionState(effectiveSessionId, 'proposedMenu');
-      if (!proposedMenu || !proposedMenu.lunch) {
-        // Fallback default authentic Vietnamese vegetarian menu if not cached
-        proposedMenu = {
-          breakfast: { slot: 'breakfast', meal: 'Bánh mì chả lụa chay & dưa leo', cost: 10000, calories: 310, ingredients: ['Bánh mì', 'Chả lụa chay', 'Dưa leo'] },
-          lunch: { slot: 'lunch', meal: 'Đậu hũ sốt cà chua hành hoa + Cơm trắng', cost: 15000, calories: 460, ingredients: ['Đậu hũ', 'Cà chua', 'Cơm trắng', 'Hành'] },
-          dinner: { slot: 'dinner', meal: 'Nấm rơm kho sả ớt + Canh rau ngót', cost: 14000, calories: 390, ingredients: ['Nấm rơm', 'Sả ớt', 'Rau ngót', 'Cơm trắng'] }
+        richCards = {
+          type: 'calendar_conflict',
+          data: {
+            date: targetDate,
+            formattedDate: formatDateVN(targetDate),
+            existing: calData.existingSlots
+          }
         };
-      }
 
-      const getFallbackDishImage = (name = '') => {
-        const lower = name.toLowerCase();
-        if (lower.includes('bánh mì')) return 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=800';
-        if (lower.includes('phở')) return 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800';
-        if (lower.includes('bún')) return 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800';
-        if (lower.includes('cơm')) return 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800';
-        if (lower.includes('đậu hũ') || lower.includes('đậu phụ')) return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
-        if (lower.includes('nấm') || lower.includes('canh')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800';
-        if (lower.includes('rau') || lower.includes('kho quẹt')) return 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800';
-        if (lower.includes('chè') || lower.includes('xôi')) return 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800';
-        return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
-      };
-
-      let slotsToApply = [];
-      const extractSlot = (slotItem, slotName) => {
-        if (!slotItem) return null;
-        const mealName = slotItem.meal || slotItem.name || 'Món ăn';
-        return {
-          slot: slotName,
-          meal: mealName,
-          image: slotItem.image || getFallbackDishImage(mealName),
-          cost: slotItem.cost || 0,
-          calories: slotItem.calories || 0,
-          ingredients: Array.isArray(slotItem.ingredients) ? slotItem.ingredients : []
-        };
-      };
-
-      if (isOnlyLunch) {
-        slotsToApply = [extractSlot(proposedMenu.lunch, 'lunch')].filter(Boolean);
-      } else if (isOnlyDinner) {
-        slotsToApply = [extractSlot(proposedMenu.dinner, 'dinner')].filter(Boolean);
-      } else if (isOnlyBreakfast) {
-        slotsToApply = [extractSlot(proposedMenu.breakfast, 'breakfast')].filter(Boolean);
+        quickSuggestions = [
+          'Thay thế toàn bộ ngày mai',
+          'Chỉ thay thế Bữa trưa',
+          'Chỉ thay thế Bữa tối',
+          'Chỉ thay thế Bữa sáng',
+          'Giữ nguyên lịch cũ'
+        ];
       } else {
-        slotsToApply = [
-          extractSlot(proposedMenu.breakfast, 'breakfast'),
-          extractSlot(proposedMenu.lunch, 'lunch'),
-          extractSlot(proposedMenu.dinner, 'dinner')
-        ].filter(Boolean);
-      }
+        // Confirmed or No conflict: Execute DB Write!
+        let proposedMenu = getSessionState(effectiveSessionId, 'proposedMenu');
+        if (!proposedMenu || !proposedMenu.lunch) {
+          proposedMenu = {
+            breakfast: { slot: 'breakfast', meal: 'Bánh mì chả lụa chay & dưa leo', cost: 10000, calories: 310, ingredients: ['Bánh mì', 'Chả lụa chay', 'Dưa leo'] },
+            lunch: { slot: 'lunch', meal: 'Đậu hũ sốt cà chua hành hoa + Cơm trắng', cost: 15000, calories: 460, ingredients: ['Đậu hũ', 'Cà chua', 'Cơm trắng', 'Hành'] },
+            dinner: { slot: 'dinner', meal: 'Nấm rơm kho sả ớt + Canh rau ngót', cost: 14000, calories: 390, ingredients: ['Nấm rơm', 'Sả ớt', 'Rau ngót', 'Cơm trắng'] }
+          };
+        }
 
-      // Execute Tool: writeUserCalendar
-      const writeResult = await writeUserCalendar({
-        date: targetDate,
-        userId,
-        slots: slotsToApply
-      });
+        const getFallbackDishImage = (name = '') => {
+          const lower = name.toLowerCase();
+          if (lower.includes('bánh mì')) return 'https://images.unsplash.com/photo-1509722747041-616f39b57569?w=800';
+          if (lower.includes('phở')) return 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800';
+          if (lower.includes('bún')) return 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800';
+          if (lower.includes('cơm')) return 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800';
+          if (lower.includes('đậu hũ') || lower.includes('đậu phụ')) return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
+          if (lower.includes('nấm') || lower.includes('canh')) return 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800';
+          if (lower.includes('rau') || lower.includes('kho quẹt')) return 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800';
+          if (lower.includes('chè') || lower.includes('xôi')) return 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800';
+          return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800';
+        };
 
-      console.log(`[Tool: writeUserCalendar] Saved ${writeResult.appliedCount} slots to DB for date: ${targetDate}`);
+        let slotsToApply = [];
+        const extractSlot = (slotItem, slotName) => {
+          if (!slotItem) return null;
+          const mealName = slotItem.meal || slotItem.name || 'Món ăn';
+          return {
+            slot: slotName,
+            meal: mealName,
+            image: slotItem.image || getFallbackDishImage(mealName),
+            cost: slotItem.cost || 0,
+            calories: slotItem.calories || 0,
+            ingredients: Array.isArray(slotItem.ingredients) ? slotItem.ingredients : []
+          };
+        };
 
-      const appliedSummary = slotsToApply.map(s => `- ${s.slot === 'breakfast' ? '🌅 Sáng' : s.slot === 'lunch' ? '☀️ Trưa' : '🌙 Tối'}: **${s.meal}** (~${formatVND(s.cost)}, ${s.calories} kcal)`).join('\n');
+        if (isOnlyLunch) {
+          slotsToApply = [extractSlot(proposedMenu.lunch, 'lunch')].filter(Boolean);
+        } else if (isOnlyDinner) {
+          slotsToApply = [extractSlot(proposedMenu.dinner, 'dinner')].filter(Boolean);
+        } else if (isOnlyBreakfast) {
+          slotsToApply = [extractSlot(proposedMenu.breakfast, 'breakfast')].filter(Boolean);
+        } else {
+          slotsToApply = [
+            extractSlot(proposedMenu.breakfast, 'breakfast'),
+            extractSlot(proposedMenu.lunch, 'lunch'),
+            extractSlot(proposedMenu.dinner, 'dinner')
+          ].filter(Boolean);
+        }
 
-      systemDirective = `[JEV Calendar Action Directives]:
+        // Execute Tool: writeUserCalendar
+        const writeResult = await writeUserCalendar({
+          date: targetDate,
+          userId,
+          slots: slotsToApply
+        });
+
+        console.log(`[Tool: writeUserCalendar] Saved ${writeResult.appliedCount} slots to DB for date: ${targetDate}`);
+
+        const appliedSummary = slotsToApply.map(s => `- ${s.slot === 'breakfast' ? '🌅 Sáng' : s.slot === 'lunch' ? '☀️ Trưa' : '🌙 Tối'}: **${s.meal}** (~${formatVND(s.cost)}, ${s.calories} kcal)`).join('\n');
+
+        systemDirective = `[JEV Calendar Action Directives]:
 - Thành công: Đã lưu trực tiếp ${slotsToApply.length} món vào cơ sở dữ liệu Lịch ăn tháng ngày ${formatDateVN(targetDate)}:
 ${appliedSummary}
 - Hãy xác nhận chúc mừng ${userPronoun} rằng kế hoạch ăn uống đã được đồng bộ vào hệ thống.
 - Nhắc ${userPronoun} có thể mở trang "Lịch ăn tháng" để xem chi tiết hoặc chuẩn bị danh sách đi chợ tự động.`;
 
-      richCards = {
-        type: 'calendar_applied',
-        data: {
-          date: targetDate,
-          formattedDate: formatDateVN(targetDate),
-          appliedCount: slotsToApply.length,
-          slots: slotsToApply
-        }
-      };
+        richCards = {
+          type: 'calendar_applied',
+          data: {
+            date: targetDate,
+            formattedDate: formatDateVN(targetDate),
+            appliedCount: slotsToApply.length,
+            slots: slotsToApply
+          }
+        };
 
-      quickSuggestions = [
-        'Mở xem Lịch ăn tháng',
-        'Tạo danh sách đi chợ cho ngày mai',
-        'Gợi ý nguyên liệu rẻ gần đây',
-        'Lên thực đơn ngày kia (06/10)'
-      ];
+        quickSuggestions = [
+          'Mở xem Lịch ăn tháng',
+          'Tạo danh sách đi chợ cho ngày mai',
+          'Gợi ý nguyên liệu rẻ gần đây',
+          'Lên thực đơn ngày kia (06/10)'
+        ];
+      }
     }
   }
 
@@ -336,7 +357,7 @@ ${appliedSummary}
     ];
   }
 
-    // ══════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
   // FLOW 2: MEAL PLAN & QUESTION ENGINE (Clarification if missing info)
   // ══════════════════════════════════════════════════════════════
   else if (
@@ -403,7 +424,6 @@ ${appliedSummary}
       });
 
       const daySlots = schedule.schedule[0].slots;
-      // Cache proposed menu in session state so subsequent "áp dụng" command knows exactly what to write
       const formattedSlots = {
         breakfast: daySlots.breakfast ? { ...daySlots.breakfast, slot: 'breakfast', meal: daySlots.breakfast.name, image: daySlots.breakfast.image } : null,
         lunch: daySlots.lunch ? { ...daySlots.lunch, slot: 'lunch', meal: daySlots.lunch.name, image: daySlots.lunch.image } : null,
@@ -488,7 +508,7 @@ ${scheduleSummary}
     ];
   }
 
-    // ══════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
   // FLOW 2.5: IMMEDIATE HUNGER / QUICK MEAL RELIEF
   // ══════════════════════════════════════════════════════════════
   else if (intent === 'HUNGRY_IMMEDIATE' || norm.includes('doi qua') || norm.includes('doi bung') || norm.includes('doi roi') || norm.includes('them an')) {
@@ -564,6 +584,10 @@ ${deals.map((d, i) => `${i + 1}. ${d.title} - ${formatVND(d.discountPrice)} (G�
     ];
   }
 
+  const userGreetingDirective = user?.fullName
+    ? `\n- THÔNG TIN NGƯỜI DÙNG: Bạn đang trò chuyện với người dùng "${user.fullName}". Hãy chào hỏi hoặc xưng hô một cách thân mật, tự nhiên.`
+    : `\n- CHẾ ĐỘ: Khách vãng lai (Chưa đăng nhập). Không được tự ý ghi dữ liệu vào Lịch ăn cá nhân hay giả định lịch sử cá nhân.`;
+
   const systemPrompt = `Bạn là Trợ lý Dinh dưỡng & Tài chính FoodSaver – một trợ lý AI thông minh, nhiệt thành và thực tế.
 XƯNG HÔ BẮT BUỘC:
 - Luôn luôn tự xưng là "${botPronoun}".
@@ -576,6 +600,7 @@ NGUYÊN TẮC TRẢ LỜI:
 3. KHÔNG BỊA ĐẶT CÁC CHỈ SỐ LẠ: Tuyệt đối không tự bịa ra các cột hay trường như "Điểm JEV Guard" hay "Suất ăn giải cứu (g)" trong bảng biểu.
 4. TRÌNH BÀY ĐẸP MẮT: Sử dụng Markdown (in đậm tiêu đề, bảng biểu rõ ràng khi cần, icon trực quan, danh sách ngắn gọn).
 5. Tuyệt đối không để lộ các thẻ kỹ thuật như [JEV Directives].
+${userGreetingDirective}
 
 ${systemDirective}`;
 
@@ -607,7 +632,6 @@ ${systemDirective}`;
 /**
  * JSON Completion with LLM Responder
  */
-
 function generateContextualFallback(pipeline) {
   const userPronoun = pipeline.context.profile.address_form || 'bạn';
   const botPronoun = pipeline.context.profile.bot_form || (userPronoun === 'Anh' || userPronoun === 'Chị' ? 'em' : 'mình');
@@ -621,6 +645,9 @@ function generateContextualFallback(pipeline) {
       const formattedDate = pipeline.richCards.data?.formattedDate || 'ngày mai';
       return 'Tuyệt vời ' + userPronoun + ' ơi! ' + botPronoun + ' đã đồng bộ thành công ' + (pipeline.richCards.data?.appliedCount || '') + ' món ăn vào cơ sở dữ liệu Lịch ăn tháng ngày ' + formattedDate + '. ' + userPronoun + ' có thể mở trang Lịch ăn tháng để xem hoặc bắt đầu lập danh sách đi chợ nhé!';
     }
+    if (pipeline.richCards?.type === 'auth_required') {
+      return 'Dạ ' + userPronoun + ' ơi, để lưu thực đơn này vào Lịch ăn tháng cá nhân và đồng bộ danh sách đi chợ, ' + userPronoun + ' vui lòng đăng nhập tài khoản FoodSaver nhé!';
+    }
   }
 
   if (pipeline.intent === 'MEAL_PLAN_BUDGET') {
@@ -630,8 +657,8 @@ function generateContextualFallback(pipeline) {
   return 'Chào ' + userPronoun + '! ' + botPronoun + ' là Trợ lý Dinh dưỡng & Tài chính FoodSaver, luôn sẵn sàng hỗ trợ ' + userPronoun + ' lên kế hoạch chi tiêu ăn uống hợp lý và dinh dưỡng.';
 }
 
-export async function processChatMessage({ message, userId, sessionId }) {
-  const pipeline = await prepareChatPipeline({ message, userId, sessionId });
+export async function processChatMessage({ message, userId, sessionId, user = null }) {
+  const pipeline = await prepareChatPipeline({ message, userId, sessionId, user });
 
   let replyText = '';
   try {
@@ -668,8 +695,8 @@ export async function processChatMessage({ message, userId, sessionId }) {
 /**
  * SSE Streaming with LLM Responder
  */
-export async function streamChatPipeline({ message, userId, sessionId, onToken }) {
-  const pipeline = await prepareChatPipeline({ message, userId, sessionId });
+export async function streamChatPipeline({ message, userId, sessionId, user = null, onToken }) {
+  const pipeline = await prepareChatPipeline({ message, userId, sessionId, user });
 
   let fullReply = '';
   try {

@@ -1,5 +1,6 @@
 import { processChatMessage, streamChatPipeline } from './chat.service.js';
 import { getUserFacts, deleteUserFact, clearSessionMemory, getChatSessionId } from './memory.service.js';
+import { ChatSessionService } from './chatSession.service.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { ApiError } from '../../shared/utils/apiError.js';
@@ -10,7 +11,8 @@ export const chatController = {
    */
   sendMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
-    const userId = req.user?.id;
+    const user = req.user || null;
+    const userId = user?.id || null;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       throw ApiError.badRequest('Nội dung tin nhắn không được để trống');
@@ -19,8 +21,21 @@ export const chatController = {
     const result = await processChatMessage({
       message: message.trim(),
       userId,
-      sessionId
+      sessionId,
+      user
     });
+
+    // Bền vững: Lưu turn hội thoại vào Database nếu người dùng đã đăng nhập
+    if (userId && sessionId) {
+      await ChatSessionService.persistTurn({
+        sessionId,
+        userId,
+        userMessage: message.trim(),
+        assistantMessage: result.reply,
+        richCards: result.richCards,
+        quickSuggestions: result.quickSuggestions
+      });
+    }
 
     return ApiResponse.success(res, {
       message: 'Xử lý tin nhắn thành công',
@@ -33,7 +48,8 @@ export const chatController = {
    */
   streamMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
-    const userId = req.user?.id;
+    const user = req.user || null;
+    const userId = user?.id || null;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ success: false, message: 'Nội dung tin nhắn không được để trống' });
@@ -46,10 +62,11 @@ export const chatController = {
     res.flushHeaders?.();
 
     try {
-      const { pipeline } = await streamChatPipeline({
+      const { pipeline, fullReply } = await streamChatPipeline({
         message: message.trim(),
         userId,
         sessionId,
+        user,
         onToken: (tok) => {
           res.write(`data: ${JSON.stringify({ type: 'token', content: tok })}\n\n`);
         }
@@ -65,11 +82,66 @@ export const chatController = {
       })}\n\n`);
 
       res.end();
+
+      // Bền vững: Lưu turn hội thoại vào Database nếu người dùng đã đăng nhập
+      if (userId && sessionId) {
+        ChatSessionService.persistTurn({
+          sessionId,
+          userId,
+          userMessage: message.trim(),
+          assistantMessage: fullReply,
+          richCards: pipeline.richCards,
+          quickSuggestions: pipeline.quickSuggestions
+        }).catch((err) => console.error('[PersistTurn SSE Error]:', err.message));
+      }
     } catch (err) {
       console.error('[Stream Controller Error]:', err.message);
       res.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
       res.end();
     }
+  }),
+
+  /**
+   * Session Management endpoints (Yêu cầu JWT)
+   */
+  listSessions: asyncHandler(async (req, res) => {
+    const sessions = await ChatSessionService.listSessions(req.user.id);
+    return ApiResponse.success(res, {
+      message: 'Lấy danh sách cuộc trò chuyện thành công',
+      data: sessions
+    });
+  }),
+
+  createSession: asyncHandler(async (req, res) => {
+    const session = await ChatSessionService.createSession(req.user.id, req.body);
+    return ApiResponse.created(res, {
+      message: 'Tạo cuộc trò chuyện mới thành công',
+      data: session
+    });
+  }),
+
+  getSession: asyncHandler(async (req, res) => {
+    const session = await ChatSessionService.getSession(req.user.id, req.params.id);
+    return ApiResponse.success(res, {
+      message: 'Chi tiết cuộc trò chuyện',
+      data: session
+    });
+  }),
+
+  updateSessionTitle: asyncHandler(async (req, res) => {
+    const updated = await ChatSessionService.updateSessionTitle(req.user.id, req.params.id, req.body?.title);
+    return ApiResponse.success(res, {
+      message: 'Đổi tên cuộc trò chuyện thành công',
+      data: updated
+    });
+  }),
+
+  deleteSession: asyncHandler(async (req, res) => {
+    const result = await ChatSessionService.deleteSession(req.user.id, req.params.id);
+    return ApiResponse.success(res, {
+      message: 'Xóa cuộc trò chuyện thành công',
+      data: result
+    });
   }),
 
   /**
