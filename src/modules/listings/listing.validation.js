@@ -80,7 +80,7 @@ export const queryListingsSchema = {
     urgentOnly: z.coerce.boolean().optional(),
     sortBy: z.enum(['EXPIRY', 'PRICE_ASC', 'PRICE_DESC', 'URGENCY', 'NEWEST']).default('EXPIRY').optional(),
     page: z.coerce.number().int().min(1).default(1).optional(),
-    limit: z.coerce.number().int().min(1).max(50).default(12).optional()
+    limit: z.coerce.number().int().min(1).max(200).default(12).optional()
   })
 };
 

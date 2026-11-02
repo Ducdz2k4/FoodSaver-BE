@@ -323,7 +323,7 @@ export const ListingService = {
 
     // Geohash filtering: include current cell and all 8 neighbors to avoid edge-of-cell cutoffs
     if (latNum !== undefined && lngNum !== undefined && !isNaN(latNum) && !isNaN(lngNum)) {
-      const precision = radiusNum <= 2 ? 6 : radiusNum <= 10 ? 5 : 4;
+      const precision = radiusNum <= 1 ? 6 : radiusNum <= 5 ? 5 : 4;
       const geohashPrefix = ngeohash.encode(latNum, lngNum, precision);
       const neighbors = [geohashPrefix, ...ngeohash.neighbors(geohashPrefix)];
       andConditions.push({
