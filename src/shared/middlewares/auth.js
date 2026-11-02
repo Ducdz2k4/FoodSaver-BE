@@ -80,7 +80,7 @@ export const optionalAuth = async (req, _res, next) => {
         const decoded = verifyAccessToken(token);
         if (decoded?.id) {
           const user = await UserModel.findById(decoded.id);
-          if (user && user.status !== 'BANNED') {
+          if (user && user.status === 'ACTIVE' && !user.passwordSetupRequired) {
             req.user = user;
           }
         }

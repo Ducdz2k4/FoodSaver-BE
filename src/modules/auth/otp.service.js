@@ -46,14 +46,21 @@ export const OtpService = {
       throw ApiError.badRequest('Mã OTP không hợp lệ hoặc đã hết hạn');
     }
 
-    await prisma.otpCode.update({
-      where: { id: otp.id },
-      data: { used: true }
-    });
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { emailVerified: true, status: 'ACTIVE' }
+    await prisma.$transaction(async (tx) => {
+      const consumed = await tx.otpCode.updateMany({
+        where: { id: otp.id, used: false, expiresAt: { gt: new Date() } },
+        data: { used: true }
+      });
+      if (consumed.count !== 1) {
+        throw ApiError.badRequest('Mã OTP không hợp lệ hoặc đã hết hạn');
+      }
+      const activated = await tx.user.updateMany({
+        where: { id: userId, status: { not: 'BANNED' } },
+        data: { emailVerified: true, status: 'ACTIVE' }
+      });
+      if (activated.count !== 1) {
+        throw ApiError.forbidden('Tài khoản đã bị khóa');
+      }
     });
 
     return { message: 'Xác thực email thành công' };

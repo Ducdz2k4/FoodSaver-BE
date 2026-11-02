@@ -2,6 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { executeJev } from './jevEngine.js';
+import { randomUUID } from 'node:crypto';
+import { ApiError } from '../../shared/utils/apiError.js';
+
+export function getChatSessionId(userId, sessionId) {
+  if (sessionId !== undefined && (typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 100)) {
+    throw ApiError.badRequest('Session ID không hợp lệ');
+  }
+  return userId
+    ? `user:${userId}:${sessionId || "default"}`
+    : `guest:${sessionId || randomUUID()}`;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,7 +43,7 @@ export async function buildContext({ userId, sessionId, currentMessage }) {
   const effectiveId = userId || sessionId || 'anonymous';
 
   // 1. Get recent session history (last 8 turns)
-  const sessionHistory = sessionStore.get(effectiveId) || [];
+  const sessionHistory = sessionStore.get(sessionId || effectiveId) || [];
   const recentTurns = sessionHistory.slice(-8);
 
   // 2. Get active user facts

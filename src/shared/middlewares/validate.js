@@ -16,12 +16,13 @@ export const validate = (schemas) => {
           }));
           validationErrors.push(...issues);
         } else {
-          // Express 5 defines req.query with a getter, so we mutate properties instead of reassigning
           if (target === 'query') {
-            for (const key of Object.keys(req.query)) {
-              delete req.query[key];
-            }
-            Object.assign(req.query, result.data);
+            Object.defineProperty(req, 'query', {
+              value: result.data,
+              writable: true,
+              configurable: true,
+              enumerable: true
+            });
           } else if (target === 'params') {
             Object.assign(req.params, result.data);
           } else {

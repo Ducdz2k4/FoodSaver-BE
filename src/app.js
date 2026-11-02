@@ -18,7 +18,7 @@ export const createApp = () => {
       if (!origin) return callback(null, true);
 
       // In development, allow all localhost and 127.0.0.1 origins
-      if (!env.isProduction || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      if (!env.isProduction) {
         return callback(null, true);
       }
 
@@ -26,7 +26,7 @@ export const createApp = () => {
         return callback(null, true);
       }
 
-      return callback(null, true);
+      return callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

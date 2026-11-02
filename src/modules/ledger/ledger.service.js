@@ -133,8 +133,8 @@ export const LedgerService = {
    * Dr gateway_clearing: [Total Amount]
    * Cr escrow:           [Total Amount]
    */
-  async recordOnlineEscrow({ orderId, amount, idempotencyKey }) {
-    return prisma.$transaction(async (tx) => {
+  async recordOnlineEscrow({ orderId, amount, idempotencyKey }, transactionClient) {
+    const execute = async (tx) => {
       const amt = Number(amount);
       const entries = [
         {
@@ -161,7 +161,8 @@ export const LedgerService = {
         description: `Ký quỹ tiền hàng đơn #${orderId} vào Escrow`,
         entries
       });
-    });
+    };
+    return transactionClient ? execute(transactionClient) : prisma.$transaction(execute);
   },
 
   /**
@@ -171,13 +172,18 @@ export const LedgerService = {
    * Cr partner_pending:  [(merchandiseTotal - serviceFee) + shippingFee] (100% shipping thuộc partner)
    * Cr platform_revenue: [serviceFee] (Chỉ tính trên merchandise, KHÔNG tính trên shipping)
    */
-  async recordOrderSettlement({ orderId, partnerId, merchandiseTotal, serviceFee, shippingFee = 0, idempotencyKey }) {
-    return prisma.$transaction(async (tx) => {
+  async recordOrderSettlement({ orderId, partnerId, merchandiseTotal, serviceFee, shippingFee = 0, discountAmount = 0, idempotencyKey }, transactionClient) {
+    const execute = async (tx) => {
+      const key = idempotencyKey || `settle_${orderId}`;
+      const existing = await tx.ledgerTransaction.findUnique({ where: { idempotencyKey: key } });
+      if (existing) return existing;
       const merch = Number(merchandiseTotal);
       const fee = Number(serviceFee);
       const ship = Number(shippingFee);
+      const discount = Number(discountAmount);
       const partnerEarnings = Math.max(0, merch - fee + ship);
-      const totalEscrowRelease = merch + ship;
+      const totalEscrowRelease = merch + ship - discount;
+      const platformRevenue = fee - discount;
 
       const entries = [
         {
@@ -198,8 +204,8 @@ export const LedgerService = {
         {
           accountCode: 'platform_revenue',
           accountType: 'PLATFORM_REVENUE',
-          entryType: 'CREDIT',
-          amount: fee,
+          entryType: platformRevenue >= 0 ? 'CREDIT' : 'DEBIT',
+          amount: Math.abs(platformRevenue),
           accountName: 'Doanh thu phí dịch vụ nền tảng FoodSaver'
         }
       ];
@@ -227,7 +233,8 @@ export const LedgerService = {
       });
 
       return ledgerTx;
-    });
+    };
+    return transactionClient ? execute(transactionClient) : prisma.$transaction(execute);
   },
 
   /**
@@ -280,8 +287,11 @@ export const LedgerService = {
    * Dr partner_receivable: [serviceFee]
    * Cr platform_revenue:   [serviceFee]
    */
-  async recordCashReceivableBooking({ orderId, partnerId, merchandiseTotal, serviceFee, idempotencyKey }) {
-    return prisma.$transaction(async (tx) => {
+  async recordCashReceivableBooking({ orderId, partnerId, merchandiseTotal, serviceFee, idempotencyKey }, transactionClient) {
+    const execute = async (tx) => {
+      const key = idempotencyKey || `cash_fee_${orderId}`;
+      const existing = await tx.ledgerTransaction.findUnique({ where: { idempotencyKey: key } });
+      if (existing) return existing;
       const fee = Number(serviceFee);
 
       const entries = [
@@ -333,14 +343,15 @@ export const LedgerService = {
       }
 
       return ledgerTx;
-    });
+    };
+    return transactionClient ? execute(transactionClient) : prisma.$transaction(execute);
   },
 
   /**
    * USE CASE 4: REFUND (Hoàn tiền cho khách hàng)
    */
-  async recordRefund({ orderId, amount, isPreSettlement = true, idempotencyKey }) {
-    return prisma.$transaction(async (tx) => {
+  async recordRefund({ orderId, amount, isPreSettlement = true, idempotencyKey }, transactionClient) {
+    const execute = async (tx) => {
       const amt = Number(amount);
       let entries = [];
 
@@ -372,7 +383,8 @@ export const LedgerService = {
         description: `Hoàn tiền đơn #${orderId}`,
         entries
       });
-    });
+    };
+    return transactionClient ? execute(transactionClient) : prisma.$transaction(execute);
   },
 
   /**

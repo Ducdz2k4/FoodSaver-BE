@@ -13,7 +13,8 @@ import {
   extractAndSaveMemoryAsync,
   saveUserFact,
   setSessionState,
-  getSessionState
+  getSessionState,
+  getChatSessionId
 } from './memory.service.js';
 import { generateLLMResponse, streamLLMResponse } from './llmClient.js';
 
@@ -112,7 +113,7 @@ export function parseBudgetAndDays(text) {
  * Prepares Context, JEV Pre-Router, Tools & LLM Prompt
  */
 export async function prepareChatPipeline({ message, userId, sessionId }) {
-  const effectiveSessionId = sessionId || userId || 'anon_' + Date.now();
+  const effectiveSessionId = getChatSessionId(userId, sessionId);
 
   appendSessionTurn(effectiveSessionId, 'user', message);
 
@@ -681,7 +682,7 @@ export async function streamChatPipeline({ message, userId, sessionId, onToken }
     });
   } catch (err) {
     console.warn('[LLM Stream Error, using fallback]:', err.message);
-    fullReply = generateContextualFallback(pipeline); if (onToken) onToken(fullReply);
+    fullReply = generateContextualFallback(pipeline);
     if (onToken) onToken(fullReply);
   }
 

@@ -1,16 +1,17 @@
 import { prisma } from '../../config/database.js';
+import { ApiError } from '../../shared/utils/apiError.js';
 
 export const TrustService = {
   /**
    * Lấy hoặc khởi tạo điểm tín nhiệm của người dùng
    */
-  async getOrCreateUserTrust(userId) {
-    let trust = await prisma.userTrust.findUnique({
+  async getOrCreateUserTrust(userId, client = prisma) {
+    let trust = await client.userTrust.findUnique({
       where: { userId }
     });
 
     if (!trust) {
-      trust = await prisma.userTrust.create({
+      trust = await client.userTrust.create({
         data: {
           userId,
           trustScore: 100.0,
@@ -38,61 +39,68 @@ export const TrustService = {
   /**
    * Ghi nhận sự kiện tín nhiệm (Trust Event)
    */
-  async recordEvent(userId, eventType, { orderId = null, note = '' } = {}) {
-    let scoreDelta = 0;
+  async recordEvent(userId, eventType, { orderId = null, note = '' } = {}, transactionClient) {
+    const execute = async (client) => {
+      let scoreDelta = 0;
 
-    switch (eventType) {
-      case 'ORDER_COMPLETED':
-      case 'SUCCESSFUL_PICKUP':
-        scoreDelta = 2.0; // Tăng uy tín khi nhận hàng nghiêm túc
-        break;
-      case 'CUSTOMER_NO_SHOW':
-        scoreDelta = -15.0; // Phạt nặng nếu giữ món cận date mà không đến lấy
-        break;
-      case 'CANCELLED':
-        scoreDelta = -3.0; // Hủy đơn
-        break;
-      case 'DISPUTED':
-        scoreDelta = -10.0;
-        break;
-      default:
-        scoreDelta = 0;
-    }
-
-    // 1. Tạo bản ghi audit trust event
-    await prisma.trustEvent.create({
-      data: {
-        userId,
-        orderId,
-        eventType,
-        scoreDelta,
-        note
+      switch (eventType) {
+        case 'ORDER_COMPLETED':
+        case 'SUCCESSFUL_PICKUP':
+          scoreDelta = 2.0; // Tăng uy tín khi nhận hàng nghiêm túc
+          break;
+        case 'CUSTOMER_NO_SHOW':
+          scoreDelta = -15.0; // Phạt nặng nếu giữ món cận date mà không đến lấy
+          break;
+        case 'CANCELLED':
+          scoreDelta = -3.0; // Hủy đơn
+          break;
+        case 'DISPUTED':
+          scoreDelta = -10.0;
+          break;
+        default:
+          scoreDelta = 0;
       }
-    });
 
-    // 2. Cập nhật UserTrust
-    const current = await this.getOrCreateUserTrust(userId);
-    const newScore = Math.max(0, Math.min(100, current.trustScore + scoreDelta));
-    const newLevel = this.calculateTrustLevel(newScore);
+      // 1. Tạo bản ghi audit trust event
+      await client.trustEvent.create({
+        data: {
+          userId,
+          orderId,
+          eventType,
+          scoreDelta,
+          note
+        }
+      });
 
-    const updateData = {
-      trustScore: newScore,
-      trustLevel: newLevel
+      // 2. Cập nhật UserTrust
+      const current = await this.getOrCreateUserTrust(userId, client);
+      const newScore = Math.max(0, Math.min(100, current.trustScore + scoreDelta));
+      const newLevel = this.calculateTrustLevel(newScore);
+
+      const updateData = {
+        trustScore: newScore,
+        trustLevel: newLevel
+      };
+
+      if (eventType === 'CUSTOMER_NO_SHOW') {
+        updateData.noShowCount = { increment: 1 };
+        updateData.lastNoShowAt = new Date();
+      } else if (eventType === 'ORDER_COMPLETED' || eventType === 'SUCCESSFUL_PICKUP') {
+        updateData.completedOrders = { increment: 1 };
+      } else if (eventType === 'CANCELLED') {
+        updateData.cancelCount = { increment: 1 };
+      }
+
+      const updated = await client.userTrust.updateMany({
+        where: { userId, trustScore: current.trustScore },
+        data: updateData
+      });
+      if (updated.count !== 1) {
+        throw ApiError.conflict('Điểm uy tín đã thay đổi. Vui lòng thử lại');
+      }
+      return client.userTrust.findUnique({ where: { userId } });
     };
-
-    if (eventType === 'CUSTOMER_NO_SHOW') {
-      updateData.noShowCount = { increment: 1 };
-      updateData.lastNoShowAt = new Date();
-    } else if (eventType === 'ORDER_COMPLETED' || eventType === 'SUCCESSFUL_PICKUP') {
-      updateData.completedOrders = { increment: 1 };
-    } else if (eventType === 'CANCELLED') {
-      updateData.cancelCount = { increment: 1 };
-    }
-
-    return prisma.userTrust.update({
-      where: { userId },
-      data: updateData
-    });
+    return transactionClient ? execute(transactionClient) : prisma.$transaction(execute);
   },
 
   /**

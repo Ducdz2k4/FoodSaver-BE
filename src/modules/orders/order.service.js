@@ -5,6 +5,16 @@ import { OrderStateMachine } from './orderStateMachine.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { TrustService } from '../trust/trust.service.js';
+import { randomInt, randomUUID } from 'node:crypto';
+
+function isPeakShippingHour(date = new Date()) {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).format(date));
+  return (hour >= 11 && hour <= 13) || (hour >= 17 && hour <= 19);
+}
 
 export function calculateEstimatedShippingFee(distanceKm, date = new Date()) {
   const distance = Math.min(20, Math.max(0.5, Number(distanceKm) || 1));
@@ -12,8 +22,7 @@ export function calculateEstimatedShippingFee(distanceKm, date = new Date()) {
   if (distance > 2) {
     fee += Math.ceil(distance - 2) * 5000;
   }
-  const hour = date.getHours();
-  if ((hour >= 11 && hour <= 13) || (hour >= 17 && hour <= 19)) {
+  if (isPeakShippingHour(date)) {
     fee += 5000;
   }
   return Math.min(60000, fee);
@@ -28,7 +37,7 @@ const ACTIVE_COUPONS = {
 
 export function verifyCoupon(code, subtotal) {
   const upperCode = (code || '').trim().toUpperCase();
-  const coupon = ACTIVE_COUPONS[upperCode];
+  const coupon = Object.hasOwn(ACTIVE_COUPONS, upperCode) ? ACTIVE_COUPONS[upperCode] : null;
   if (!coupon) {
     throw ApiError.badRequest(`Mã giảm giá "${code}" không tồn tại hoặc đã hết hạn.`);
   }
@@ -36,7 +45,9 @@ export function verifyCoupon(code, subtotal) {
   let discountAmount = 0;
   if (coupon.type === 'PERCENT') {
     discountAmount = Math.min(coupon.maxDiscount, Math.round((Number(subtotal) * coupon.value) / 100));
-  } else if (coupon.type === 'FIXED' || coupon.type === 'SHIPPING') {
+  } else if (coupon.type === 'SHIPPING') {
+    discountAmount = coupon.value;
+  } else if (coupon.type === 'FIXED') {
     discountAmount = Math.min(Number(subtotal), coupon.value);
   }
 
@@ -47,6 +58,16 @@ export function verifyCoupon(code, subtotal) {
   };
 }
 
+async function claimOrderTransition(tx, order, status) {
+  const claimed = await tx.order.updateMany({
+    where: { id: order.id, status: order.status, paymentStatus: order.paymentStatus },
+    data: { status }
+  });
+  if (claimed.count !== 1) {
+    throw ApiError.conflict('Đơn hàng đã thay đổi. Vui lòng tải lại và thử lại');
+  }
+}
+
 export const OrderService = {
   estimateShipping(distanceKm) {
     const defaultFee = calculateEstimatedShippingFee(distanceKm);
@@ -54,10 +75,7 @@ export const OrderService = {
       distanceKm: Number(distanceKm),
       defaultFee,
       maxFee: 60000,
-      isPeakHour: (() => {
-        const h = new Date().getHours();
-        return (h >= 11 && h <= 13) || (h >= 17 && hour <= 19);
-      })()
+      isPeakHour: isPeakShippingHour()
     };
   },
 
@@ -91,8 +109,8 @@ export const OrderService = {
       );
     }
 
-    const orderNumber = `FS${Date.now().toString().slice(-8)}`;
-    const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const orderNumber = `FS${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
+    const pickupOtp = randomInt(100000, 1000000).toString();
     const pickupQrCode = `FS_HANDOVER_${orderNumber}_${pickupOtp}`;
 
     // 2. ACID Transaction
@@ -129,12 +147,10 @@ export const OrderService = {
 
       let discountAmount = 0;
       if (discountCode) {
-        try {
-          const verified = verifyCoupon(discountCode, merchandiseTotal);
-          discountAmount = verified.discountAmount;
-        } catch {
-          // ignore
-        }
+        const verified = verifyCoupon(discountCode, merchandiseTotal);
+        discountAmount = verified.code === 'FREESHIP'
+          ? Math.min(finalShippingFee, verified.discountAmount)
+          : verified.discountAmount;
       }
 
       const totalPrice = Math.max(0, merchandiseTotal + finalShippingFee - discountAmount);
@@ -269,8 +285,13 @@ export const OrderService = {
 
     // 2. Validate state machine
     OrderStateMachine.validateTransition(order.status, 'HANDED_OVER');
+    if (order.status === 'HANDED_OVER') return formatOrderResponse(order);
+    if (!['COD', 'CASH'].includes(order.paymentMethod) && order.paymentStatus !== 'PAID') {
+      throw ApiError.badRequest('Đơn hàng trực tuyến chưa được thanh toán');
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
+      await claimOrderTransition(tx, order, 'HANDED_OVER');
       const now = new Date();
       const isCash = order.paymentMethod === 'COD' || order.paymentMethod === 'CASH';
 
@@ -303,7 +324,7 @@ export const OrderService = {
           merchandiseTotal: order.merchandiseTotal,
           serviceFee: order.serviceFee,
           idempotencyKey: `cash_rec_${order.id}`
-        });
+        }, tx);
       }
 
       // c. Cập nhật reservation status sang CONFIRMED
@@ -370,8 +391,12 @@ export const OrderService = {
     if (order.status === 'COMPLETED') {
       return formatOrderResponse(order);
     }
+    if (order.status !== 'HANDED_OVER' || order.paymentStatus !== 'PAID') {
+      throw ApiError.badRequest('Chỉ có thể xác nhận đơn đã bàn giao và thanh toán');
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
+      await claimOrderTransition(tx, order, 'COMPLETED');
       const now = new Date();
 
       const updatedOrder = await tx.order.update({
@@ -396,15 +421,16 @@ export const OrderService = {
           merchandiseTotal: order.merchandiseTotal,
           serviceFee: order.serviceFee,
           shippingFee: order.shippingFee,
+          discountAmount: order.discountAmount,
           idempotencyKey: `settle_complete_${order.id}`
-        });
+        }, tx);
       }
 
       // Thưởng điểm tín nhiệm cho khách
       await TrustService.recordEvent(userId, 'ORDER_COMPLETED', {
         orderId: order.id,
         note: `Hoàn tất đơn hàng #${order.orderNumber}`
-      });
+      }, tx);
 
       await tx.orderStatusHistory.create({
         data: {
@@ -442,7 +468,7 @@ export const OrderService = {
    * Hủy đơn hàng (Cancel Order)
    * Tự động giải phóng Reservation và hoàn tiền Escrow nếu đã thanh toán Online
    */
-  async cancelOrder(userId, orderId, reason) {
+  async cancelOrder(userId, orderId, reason, targetStatus = 'CANCELLED') {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -463,7 +489,11 @@ export const OrderService = {
       throw ApiError.badRequest('Đơn hàng đã bàn giao hoặc hoàn tất, không thể tự ý hủy.');
     }
 
+    if (order.status === targetStatus) return formatOrderResponse(order);
+    OrderStateMachine.validateTransition(order.status, targetStatus);
+
     const updated = await prisma.$transaction(async (tx) => {
+      await claimOrderTransition(tx, order, targetStatus);
       // 1. Giải phóng tồn kho reservation
       for (const res of order.reservations) {
         if (res.status === 'RESERVED') {
@@ -478,7 +508,7 @@ export const OrderService = {
           amount: order.totalPrice,
           isPreSettlement: true,
           idempotencyKey: `refund_cancel_${order.id}`
-        });
+        }, tx);
 
         await tx.payment.updateMany({
           where: { orderId: order.id, status: 'PAID' },
@@ -490,7 +520,7 @@ export const OrderService = {
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: {
-          status: 'CANCELLED',
+          status: targetStatus,
           paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
           reservationStatus: 'RELEASED',
           cancellationReason: reason || 'Hủy đơn hàng'
@@ -506,14 +536,14 @@ export const OrderService = {
         await TrustService.recordEvent(userId, 'CANCELLED', {
           orderId: order.id,
           note: 'Hủy đơn hàng sau khi đã xác nhận'
-        });
+        }, tx);
       }
 
       await tx.orderStatusHistory.create({
         data: {
           orderId,
           oldStatus: order.status,
-          newStatus: 'CANCELLED',
+          newStatus: targetStatus,
           changedBy: userId,
           note: reason || 'Hủy đơn hàng'
         }
@@ -525,13 +555,13 @@ export const OrderService = {
     emitToPartner(order.listing.partnerId, 'ORDER_STATUS_CHANGED', {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      status: 'CANCELLED'
+      status: targetStatus
     });
 
     emitToUser(order.customerId, 'ORDER_STATUS_CHANGED', {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      status: 'CANCELLED'
+      status: targetStatus
     });
 
     return formatOrderResponse(updated);
@@ -904,18 +934,21 @@ export const OrderService = {
     if (!order) throw ApiError.notFound('Không tìm thấy đơn hàng');
     if (order.listing.partner.userId !== userId) throw ApiError.forbidden('Bạn không có quyền quản lý đơn hàng này');
 
+    if (status === 'REJECTED' || status === 'CANCELLED') {
+      return this.cancelOrder(userId, orderId, 'Đối tác từ chối hoặc hủy đơn', status);
+    }
+    if (status === 'HANDED_OVER' || status === 'COMPLETED') {
+      throw ApiError.badRequest('Vui lòng dùng xác nhận bàn giao và để khách xác nhận nhận hàng');
+    }
+    if (order.status === status) return formatOrderResponse(order);
+    if (!['COD', 'CASH'].includes(order.paymentMethod) && order.paymentStatus !== 'PAID') {
+      throw ApiError.badRequest('Đơn hàng trực tuyến chưa được thanh toán');
+    }
+
     OrderStateMachine.validateTransition(order.status, status);
 
     const updated = await prisma.$transaction(async (tx) => {
-      if (status === 'REJECTED') {
-        await tx.listing.update({
-          where: { id: order.listingId },
-          data: {
-            quantity: { increment: order.quantity },
-            status: 'AVAILABLE'
-          }
-        });
-      }
+      await claimOrderTransition(tx, order, status);
 
       const updatedOrder = await tx.order.update({
         where: { id: orderId },

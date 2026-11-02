@@ -36,8 +36,10 @@ const handlePrismaKnownRequestError = (err) => {
       return ApiError.badRequest('Giá trị truyền vào vượt quá độ dài tối đa cho phép');
     case 'P1001':
       return ApiError.internal('Không thể kết nối tới cơ sở dữ liệu MySQL');
+    case 'P2034':
+      return ApiError.conflict('Dữ liệu đang được cập nhật. Vui lòng thử lại');
     default:
-      return ApiError.badRequest(`Lỗi truy vấn cơ sở dữ liệu: ${err.message}`);
+      return ApiError.internal('Lỗi truy vấn cơ sở dữ liệu');
   }
 };
 
@@ -45,6 +47,7 @@ const handlePrismaKnownRequestError = (err) => {
  * Centralized Global Error Handler Middleware
  */
 export const errorHandler = (err, req, res, _next) => {
+  if (res.headersSent) return _next(err);
   let error = err;
 
   // 1. Handle Malformed JSON body from express.json()
@@ -55,6 +58,11 @@ export const errorHandler = (err, req, res, _next) => {
   // 2. Handle JWT errors
   if (err.name === 'JsonWebTokenError') error = handleJWTError();
   if (err.name === 'TokenExpiredError') error = handleJWTExpiredError();
+  if (err.name === 'MulterError') {
+    error = ApiError.badRequest(err.code === 'LIMIT_FILE_SIZE'
+      ? 'Ảnh tải lên vượt quá giới hạn 10MB'
+      : 'Tệp tải lên không hợp lệ hoặc vượt quá giới hạn số lượng');
+  }
 
   // 3. Handle Prisma Errors
   if (err.name === 'PrismaClientKnownRequestError') {

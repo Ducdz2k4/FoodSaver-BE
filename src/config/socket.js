@@ -1,6 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { verifyAccessToken } from '../shared/utils/jwt.js';
 import { env } from './env.js';
+import { UserModel } from '../modules/users/user.model.js';
 
 let io = null;
 
@@ -8,13 +9,13 @@ export const initSocket = (httpServer) => {
   io = new SocketIOServer(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (!origin || !env.isProduction || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        if (!origin || !env.isProduction) {
           return callback(null, true);
         }
         if (Array.isArray(env.corsOrigin) && env.corsOrigin.includes(origin)) {
           return callback(null, true);
         }
-        return callback(null, true);
+        return callback(null, false);
       },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH']
@@ -22,14 +23,18 @@ export const initSocket = (httpServer) => {
   });
 
   // Socket authentication middleware
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
     if (token && typeof token === 'string') {
       try {
         const decoded = verifyAccessToken(token.replace('Bearer ', ''));
-        socket.user = decoded;
+        const user = await UserModel.findById(decoded.id);
+        if (!user || user.status !== 'ACTIVE' || user.passwordSetupRequired) {
+          return next(new Error('Unauthorized'));
+        }
+        socket.user = user;
       } catch {
-        // Continue as guest
+        return next(new Error('Unauthorized'));
       }
     }
     next();
@@ -43,7 +48,7 @@ export const initSocket = (httpServer) => {
 
     // Join partner room
     socket.on('join_partner', (partnerId) => {
-      if (partnerId) {
+      if (partnerId && socket.user?.partnerProfileId === partnerId && socket.user?.partnerCapability === 'VERIFIED') {
         socket.join(`partner:${partnerId}`);
       }
     });
@@ -52,9 +57,12 @@ export const initSocket = (httpServer) => {
     socket.on('BARGAIN_SHIPPING_REQUEST', (data) => {
       // User sends bargain request to partner
       // data: { partnerId, orderNumber, customerId, customerName, defaultFee, proposedFee, distanceKm }
-      if (data?.partnerId) {
+      if (socket.user && typeof data?.partnerId === 'string') {
+        if (!Number.isFinite(data.proposedFee) || data.proposedFee < 0 || data.proposedFee > 60000) return;
         io.to(`partner:${data.partnerId}`).emit('RECEIVE_BARGAIN_REQUEST', {
           ...data,
+          customerId: socket.user.id,
+          customerName: socket.user.fullName,
           senderSocketId: socket.id
         });
       }
@@ -63,8 +71,12 @@ export const initSocket = (httpServer) => {
     socket.on('BARGAIN_SHIPPING_RESPONSE', (data) => {
       // Partner responds to customer (accepted, rejected, or counter-offer)
       // data: { customerId, accepted, finalFee, message }
-      if (data?.customerId) {
-        io.to(`user:${data.customerId}`).emit('RECEIVE_BARGAIN_RESPONSE', data);
+      if (socket.user?.partnerCapability === 'VERIFIED' && typeof data?.customerId === 'string') {
+        if (typeof data.accepted !== 'boolean' || !Number.isFinite(data.finalFee) || data.finalFee < 0 || data.finalFee > 60000) return;
+        io.to(`user:${data.customerId}`).emit('RECEIVE_BARGAIN_RESPONSE', {
+          ...data,
+          partnerId: socket.user.partnerProfileId
+        });
       }
     });
 

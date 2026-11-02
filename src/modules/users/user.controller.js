@@ -1,6 +1,7 @@
 import { UserService } from './user.service.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
+import { ApiError } from '../../shared/utils/apiError.js';
 
 export const UserController = {
   getAllUsers: asyncHandler(async (req, res) => {
@@ -18,6 +19,9 @@ export const UserController = {
   }),
 
   getUserById: asyncHandler(async (req, res) => {
+    if (req.user.id !== req.params.id && !['ADMIN', 'SYS_ADMIN'].includes(req.user.role)) {
+      throw ApiError.forbidden('Bạn không có quyền xem thông tin tài khoản này');
+    }
     const user = await UserService.getUserById(req.params.id);
     return ApiResponse.success(res, {
       message: 'Lấy thông tin người dùng thành công',

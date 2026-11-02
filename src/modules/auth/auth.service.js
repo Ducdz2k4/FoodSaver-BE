@@ -300,6 +300,10 @@ export const AuthService = {
       role: user.role
     };
 
+    if (user.status === 'BANNED' || (user.status === 'INACTIVE' && user.emailVerified)) {
+      throw ApiError.forbidden('Tài khoản của bạn đã bị khóa hoặc ngừng hoạt động');
+    }
+
     const newAccessToken = generateAccessToken(tokenPayload);
     const newRefreshToken = generateRefreshToken(tokenPayload);
 

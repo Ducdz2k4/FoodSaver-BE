@@ -1,7 +1,27 @@
 import { prisma } from '../../config/database.js';
+import { ApiError } from '../../shared/utils/apiError.js';
+import { z } from 'zod';
+
+const planSchema = z.object({
+  userId: z.string().uuid(),
+  date: z.iso.date(),
+  slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  meal: z.string().trim().min(1).max(255),
+  image: z.string().max(500).nullish(),
+  calories: z.coerce.number().int().nonnegative(),
+  cost: z.coerce.number().nonnegative(),
+  ingredients: z.array(z.string().max(255)).max(100)
+});
+
+function validateMonth(year, month) {
+  if (!Number.isInteger(year) || year < 1900 || year > 9999 || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw ApiError.badRequest('Tháng hoặc năm không hợp lệ');
+  }
+}
 
 export const MealPlanService = {
   async getMonthPlans({ year, month, userId } = {}) {
+    validateMonth(year, month);
     const monthStr = String(month).padStart(2, '0');
     const prefix = `${year}-${monthStr}`;
 
@@ -9,9 +29,7 @@ export const MealPlanService = {
       date: { startsWith: prefix },
     };
 
-    if (userId) {
-      where.OR = [{ userId }, { userId: null }];
-    }
+    where.userId = userId || null;
 
     const plans = await prisma.mealPlan.findMany({
       where,
@@ -38,6 +56,12 @@ export const MealPlanService = {
   },
 
   async savePlanSlot({ userId, date, slot, meal, image, calories = 0, cost = 0, ingredients = [] }) {
+    if (!userId) throw ApiError.unauthorized('Vui lòng đăng nhập để lưu lịch ăn');
+    const parsed = planSchema.safeParse({ userId, date, slot, meal, image, calories, cost, ingredients });
+    if (!parsed.success) {
+      throw ApiError.badRequest('Dữ liệu bữa ăn không hợp lệ', parsed.error.issues);
+    }
+    ({ userId, date, slot, meal, image, calories, cost, ingredients } = parsed.data);
     const where = {
       date,
       slot,
@@ -78,22 +102,26 @@ export const MealPlanService = {
   },
 
   async deletePlanSlot(id, userId) {
+    if (!userId) throw ApiError.unauthorized('Vui lòng đăng nhập để xóa lịch ăn');
     const plan = await prisma.mealPlan.findUnique({ where: { id } });
     if (!plan) return null;
+
+    if (plan.userId !== userId) {
+      throw ApiError.forbidden('Bạn không có quyền xóa bữa ăn này');
+    }
 
     return prisma.mealPlan.delete({ where: { id } });
   },
 
   async getMonthSummary({ year, month, userId } = {}) {
+    validateMonth(year, month);
     const monthStr = String(month).padStart(2, '0');
     const prefix = `${year}-${monthStr}`;
 
     const where = {
       date: { startsWith: prefix },
     };
-    if (userId) {
-      where.OR = [{ userId }, { userId: null }];
-    }
+    where.userId = userId || null;
 
     const plans = await prisma.mealPlan.findMany({ where });
 

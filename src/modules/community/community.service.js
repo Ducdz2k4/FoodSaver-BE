@@ -4,6 +4,8 @@ import { HttpStatus } from '../../shared/constants/httpStatus.js';
 
 export const CommunityService = {
   async getPosts({ category, sortBy = 'hot', page = 1, limit = 20 } = {}) {
+    page = Math.max(1, parseInt(page, 10) || 1);
+    limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const where = {};
     if (category && category !== 'all' && category !== 'ALL') {
       where.category = category.toLowerCase();
@@ -44,7 +46,7 @@ export const CommunityService = {
     tags = [],
     mealPlan,
   }) {
-    if (!title || !content) {
+    if (typeof title !== 'string' || typeof content !== 'string' || !title.trim() || !content.trim()) {
       throw new ApiError(HttpStatus.BAD_REQUEST, 'Tiêu đề và nội dung bài viết không được để trống');
     }
 
@@ -68,44 +70,46 @@ export const CommunityService = {
   },
 
   async toggleLikePost(postId, { userId, userIp } = {}) {
-    const post = await prisma.communityPost.findUnique({
-      where: { id: postId },
-    });
-    if (!post) {
-      throw new ApiError(HttpStatus.NOT_FOUND, 'Không tìm thấy bài viết này');
-    }
-
-    const where = { postId };
-    if (userId) {
-      where.userId = userId;
-    } else if (userIp) {
-      where.userIp = userIp;
-    }
-
-    const existingLike = await prisma.communityLike.findFirst({ where });
-
-    if (existingLike) {
-      await prisma.communityLike.delete({ where: { id: existingLike.id } });
-      const updated = await prisma.communityPost.update({
+    return prisma.$transaction(async (tx) => {
+      const post = await tx.communityPost.findUnique({
         where: { id: postId },
-        data: { likes: { decrement: 1 } },
-        select: { likes: true },
       });
-      return { liked: false, likes: Math.max(0, updated.likes) };
-    } else {
-      await prisma.communityLike.create({
-        data: {
-          postId,
-          userId: userId || null,
-          userIp: userIp || null,
-        },
-      });
-      const updated = await prisma.communityPost.update({
-        where: { id: postId },
-        data: { likes: { increment: 1 } },
-        select: { likes: true },
-      });
-      return { liked: true, likes: updated.likes };
-    }
+      if (!post) {
+        throw new ApiError(HttpStatus.NOT_FOUND, 'Không tìm thấy bài viết này');
+      }
+
+      const where = { postId };
+      if (userId) {
+        where.userId = userId;
+      } else if (userIp) {
+        where.userIp = userIp;
+      }
+
+      const existingLike = await tx.communityLike.findFirst({ where });
+
+      if (existingLike) {
+        await tx.communityLike.delete({ where: { id: existingLike.id } });
+        const updated = await tx.communityPost.update({
+          where: { id: postId },
+          data: { likes: { decrement: 1 } },
+          select: { likes: true },
+        });
+        return { liked: false, likes: Math.max(0, updated.likes) };
+      } else {
+        await tx.communityLike.create({
+          data: {
+            postId,
+            userId: userId || null,
+            userIp: userIp || null,
+          },
+        });
+        const updated = await tx.communityPost.update({
+          where: { id: postId },
+          data: { likes: { increment: 1 } },
+          select: { likes: true },
+        });
+        return { liked: true, likes: updated.likes };
+      }
+    }, { isolationLevel: 'Serializable' });
   },
 };

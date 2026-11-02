@@ -170,7 +170,15 @@ async function main() {
   // Initial Sample Listing
   await prisma.listing.upsert({
     where: { id: 'list-seed-0001' },
-    update: { quantity: 5, status: 'AVAILABLE' },
+    update: {
+      quantity: 5,
+      status: 'AVAILABLE',
+      // Refresh time windows so re-seeding revives the listing instead of
+      // leaving the old (already elapsed) expiryAt for the sweep worker.
+      expiryAt: new Date(Date.now() + 2.5 * 3600 * 1000),
+      pickupStartTime: new Date(Date.now() + 1 * 3600 * 1000),
+      pickupEndTime: new Date(Date.now() + 3 * 3600 * 1000),
+    },
     create: {
       id: 'list-seed-0001',
       partnerId: partnerProfile.id,

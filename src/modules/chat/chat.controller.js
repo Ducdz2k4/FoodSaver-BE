@@ -1,5 +1,5 @@
 import { processChatMessage, streamChatPipeline } from './chat.service.js';
-import { getUserFacts, deleteUserFact, clearSessionMemory } from './memory.service.js';
+import { getUserFacts, deleteUserFact, clearSessionMemory, getChatSessionId } from './memory.service.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { ApiError } from '../../shared/utils/apiError.js';
@@ -10,7 +10,7 @@ export const chatController = {
    */
   sendMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
-    const userId = req.user?.id || req.body.userId;
+    const userId = req.user?.id;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       throw ApiError.badRequest('Nội dung tin nhắn không được để trống');
@@ -33,7 +33,7 @@ export const chatController = {
    */
   streamMessage: asyncHandler(async (req, res) => {
     const { message, sessionId } = req.body;
-    const userId = req.user?.id || req.body.userId;
+    const userId = req.user?.id;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ success: false, message: 'Nội dung tin nhắn không được để trống' });
@@ -76,7 +76,7 @@ export const chatController = {
    * Get user facts / transparency
    */
   getMemory: asyncHandler(async (req, res) => {
-    const effectiveId = req.user?.id || req.query.sessionId || req.query.userId || 'anonymous';
+    const effectiveId = req.user?.id || getChatSessionId(null, req.query.sessionId);
     const facts = getUserFacts(effectiveId);
     return ApiResponse.success(res, {
       message: 'Lấy danh sách bộ nhớ thành công',
@@ -88,7 +88,7 @@ export const chatController = {
    * Delete a specific fact
    */
   deleteMemoryKey: asyncHandler(async (req, res) => {
-    const effectiveId = req.user?.id || req.body.sessionId || 'anonymous';
+    const effectiveId = req.user?.id || getChatSessionId(null, req.body?.sessionId);
     const { key } = req.params;
     const deleted = deleteUserFact(effectiveId, key);
     return ApiResponse.success(res, {
@@ -101,7 +101,7 @@ export const chatController = {
    * Clear active session conversation history
    */
   clearSession: asyncHandler(async (req, res) => {
-    const effectiveId = req.user?.id || req.body.sessionId || 'anonymous';
+    const effectiveId = getChatSessionId(req.user?.id, req.body?.sessionId);
     clearSessionMemory(effectiveId);
     return ApiResponse.success(res, {
       message: 'Đã xóa lịch sử hội thoại',

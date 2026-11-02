@@ -42,7 +42,7 @@ export const PaymentService = {
     signature,
     idempotencyKey
   }) {
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Kiểm tra đơn hàng
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -62,13 +62,33 @@ export const PaymentService = {
           where: { gatewayTransactionId }
         });
         if (existingTx && existingTx.status === 'PAID') {
+          if (existingTx.orderId !== order.id || Number(existingTx.amount) !== Number(amount)) {
+            throw ApiError.conflict('Giao dịch đã được sử dụng cho đơn hàng khác');
+          }
           console.log(`[Payment Webhook Duplicate] Transaction ${gatewayTransactionId} already paid. Skipping.`);
           return { success: true, message: 'Giao dịch đã được xử lý trước đó', payment: existingTx };
         }
       }
 
+      if (!Number.isFinite(Number(amount)) || Number(amount) <= 0 || Number(amount) !== Number(order.totalPrice)) {
+        throw ApiError.badRequest('Số tiền thanh toán không khớp với đơn hàng');
+      }
+      if (order.paymentMethod !== 'SYSTEM_QR') {
+        throw ApiError.badRequest('Đơn hàng không sử dụng thanh toán trực tuyến');
+      }
+      if (order.paymentStatus === 'PAID' || order.paymentStatus === 'REFUNDED') {
+        throw ApiError.conflict('Đơn hàng đã được thanh toán hoặc hoàn tiền');
+      }
+      const claimed = await tx.order.updateMany({
+        where: { id: order.id, paymentStatus: order.paymentStatus },
+        data: { paymentStatus: 'PAID' }
+      });
+      if (claimed.count !== 1) {
+        throw ApiError.conflict('Đơn hàng đang được xử lý thanh toán');
+      }
+
       // 3. Trường hợp biên: Webhook đến muộn khi đơn đã bị HỦY hoặc HẾT HẠN
-      if (order.status === 'CANCELLED' || order.status === 'EXPIRED') {
+      if (['CANCELLED', 'EXPIRED', 'REJECTED'].includes(order.status)) {
         console.warn(`[Payment Late Webhook] Order #${order.orderNumber} was ${order.status}. Route funds to refund!`);
         
         // Vẫn ghi nhận tiền vào Escrow rồi tự động tạo lệnh Hoàn tiền (Refund)
@@ -76,13 +96,25 @@ export const PaymentService = {
           orderId: order.id,
           amount,
           idempotencyKey: `escrow_${gatewayTransactionId || idempotencyKey}`
-        });
+        }, tx);
 
         await LedgerService.recordRefund({
           orderId: order.id,
           amount,
           isPreSettlement: true,
           idempotencyKey: `refund_late_${gatewayTransactionId || idempotencyKey}`
+        }, tx);
+
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            amount: Number(amount),
+            method: 'ONLINE',
+            status: 'PAID',
+            gatewayTransactionId,
+            paidAt: new Date(),
+            idempotencyKey: idempotencyKey || `pay_${gatewayTransactionId}`
+          }
         });
 
         return {
@@ -125,7 +157,7 @@ export const PaymentService = {
         orderId: order.id,
         amount,
         idempotencyKey: `escrow_${gatewayTransactionId || idempotencyKey}`
-      });
+      }, tx);
 
       // 6. Cập nhật Order status sang PAID & paymentStatus sang PAID
       const updatedOrder = await tx.order.update({
@@ -133,7 +165,8 @@ export const PaymentService = {
         data: {
           paymentStatus: 'PAID',
           status: order.status === 'PENDING' ? 'PAID' : order.status
-        }
+        },
+        include: { listing: { select: { partnerId: true } } }
       });
 
       await tx.orderStatusHistory.create({
@@ -146,21 +179,17 @@ export const PaymentService = {
         }
       });
 
-      // 7. Bắn realtime event tới Quán và Khách
-      emitToPartner(order.listing.partnerId, 'PAYMENT_SUCCESS', {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amount: Number(amount),
-        method: 'ONLINE'
-      });
-
-      emitToUser(order.customerId, 'PAYMENT_SUCCESS', {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        amount: Number(amount)
-      });
-
       return { success: true, payment, order: updatedOrder };
     });
+    if (result.order) {
+      const payload = {
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        amount: Number(amount)
+      };
+      emitToPartner(result.order.listing.partnerId, 'PAYMENT_SUCCESS', { ...payload, method: 'ONLINE' });
+      emitToUser(result.order.customerId, 'PAYMENT_SUCCESS', payload);
+    }
+    return result;
   }
 };

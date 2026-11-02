@@ -13,7 +13,9 @@ import {
   updateOrderStatusSchema,
   confirmHandoverSchema,
   confirmReceiptSchema,
-  applyCouponSchema
+  applyCouponSchema,
+  proposeAdjustmentSchema,
+  respondAdjustmentSchema
 } from './order.validation.js';
 
 const customerOrderRouter = Router();

@@ -198,9 +198,7 @@ export async function generateMealSchedule({ days = 3, budget = 150000, people =
 export async function readUserCalendar({ date, userId }) {
   try {
     const where = { date };
-    if (userId) {
-      where.OR = [{ userId }, { userId: null }];
-    }
+    where.userId = userId || null;
 
     const plans = await prisma.mealPlan.findMany({
       where,

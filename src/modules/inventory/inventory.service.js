@@ -10,7 +10,7 @@ export const InventoryService = {
    */
   async reserveStock(tx, { listingId, quantity, orderId, reservationMinutes = 30 }) {
     const qty = Number(quantity);
-    if (qty <= 0) {
+    if (!Number.isSafeInteger(qty) || qty <= 0) {
       throw ApiError.badRequest('Số lượng đặt giữ phải lớn hơn 0');
     }
 
@@ -39,13 +39,22 @@ export const InventoryService = {
 
     // 2. Trừ tồn kho listing nguyên tử
     const remainingQty = listing.quantity - qty;
-    await tx.listing.update({
-      where: { id: listingId },
+    const stockUpdate = await tx.listing.updateMany({
+      where: {
+        id: listingId,
+        quantity: listing.quantity,
+        status: listing.status,
+        expiryAt: { gt: new Date() }
+      },
       data: {
         quantity: remainingQty,
         status: remainingQty === 0 ? 'SOLD_OUT' : listing.status
       }
     });
+
+    if (stockUpdate.count !== 1) {
+      throw ApiError.conflict('Tồn kho đã thay đổi. Vui lòng thử đặt hàng lại.');
+    }
 
     // 3. Tạo bản ghi InventoryReservation với thời gian hết hạn
     const expiresAt = new Date(Date.now() + reservationMinutes * 60 * 1000);
@@ -79,14 +88,16 @@ export const InventoryService = {
     }
 
     // Cập nhật reservation status sang RELEASED
-    await tx.inventoryReservation.update({
-      where: { id: reservationId },
+    const released = await tx.inventoryReservation.updateMany({
+      where: { id: reservationId, status: 'RESERVED' },
       data: {
         status: 'RELEASED',
         releasedAt: new Date(),
         note
       }
     });
+
+    if (released.count !== 1) return null;
 
     // Kiểm tra date của sản phẩm
     const now = new Date();
@@ -137,16 +148,25 @@ export const InventoryService = {
 
     for (const res of expiredReservations) {
       try {
-        await prisma.$transaction(async (tx) => {
+        const swept = await prisma.$transaction(async (tx) => {
+          if (res.order && !['PENDING', 'AWAITING_PAYMENT'].includes(res.order.status)) return false;
+          if (res.order) {
+            const expiredOrder = await tx.order.updateMany({
+              where: { id: res.order.id, status: res.order.status, paymentStatus: res.order.paymentStatus },
+              data: { status: 'EXPIRED' }
+            });
+            if (expiredOrder.count !== 1) return false;
+          }
           // 1. Đổi trạng thái reservation sang EXPIRED
-          await tx.inventoryReservation.update({
-            where: { id: res.id },
+          const expired = await tx.inventoryReservation.updateMany({
+            where: { id: res.id, status: 'RESERVED', expiresAt: { lte: now } },
             data: {
               status: 'EXPIRED',
               releasedAt: now,
               note: 'Hết hạn giữ món (Customer No-Show)'
             }
           });
+          if (expired.count !== 1) throw ApiError.conflict('Reservation đã thay đổi trong khi quét hết hạn');
 
           // 2. Hoàn lại tồn kho nếu listing chưa hết date
           const isListingExpired = new Date(res.listing.expiryAt) <= now;
@@ -190,7 +210,7 @@ export const InventoryService = {
             await TrustService.recordEvent(res.order.customerId, 'CUSTOMER_NO_SHOW', {
               orderId: res.order.id,
               note: `Không đến lấy món #${res.order.orderNumber} trước ${res.expiresAt.toLocaleTimeString('vi-VN')}`
-            });
+            }, tx);
 
             // Gửi thông báo cho đối tác
             await tx.notification.create({
@@ -212,9 +232,10 @@ export const InventoryService = {
               }
             });
           }
+          return true;
         });
 
-        sweptCount++;
+        if (swept) sweptCount++;
       } catch (err) {
         console.error(`[Inventory Sweeper Error for Res ${res.id}]:`, err.message);
       }

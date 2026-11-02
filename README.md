@@ -4,6 +4,15 @@ Dự án Backend cho hệ thống **FoodSaver**, được thiết kế chuẩn m
 
 ---
 
+## Payment webhook security
+
+Configure a random `PAYMENT_WEBHOOK_SECRET` in the backend environment. Gateway adapters and local simulators must send the same secret in the `X-Webhook-Secret` header over HTTPS when calling `POST /api/v1/payments/webhook`. This endpoint returns 503 when no secret is configured and 401 for invalid credentials. Do not expose the secret through frontend environment variables. Use a gateway-specific signature-verifying adapter before connecting a real payment provider.
+
+Payload fields: `orderId` (UUID), `gatewayTransactionId` (unique string, at most 80 characters), and `amount` (positive number matching the server-side order total).
+
+In production, `CORS_ORIGIN` must list the exact trusted frontend origins; unlisted origins are no longer allowed by HTTP or Socket.IO CORS.
+Production also requires distinct, non-default `JWT_SECRET` and `JWT_REFRESH_SECRET`. Meal-plan writes/deletes and community publishing/likes require an active authenticated account. Guests can still browse public posts, public meal templates, and use the chatbot.
+
 ## 🎯 Bản chất của Modular / Feature-Based Architecture
 
 ### 1. Phân biệt với Layered Architecture (Horizontal Monolith)

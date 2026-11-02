@@ -14,6 +14,7 @@ export const env = {
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : '*',
   databaseUrl: process.env.DATABASE_URL || '',
+  paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
   jwt: {
     secret: process.env.JWT_SECRET || 'super_secret_jwt_key_foodsaver_2026_secure',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
@@ -45,3 +46,13 @@ export const env = {
     clientId: process.env.GOOGLE_CLIENT_ID || ''
   }
 };
+
+if (env.isProduction && (
+  !process.env.JWT_SECRET ||
+  !process.env.JWT_REFRESH_SECRET ||
+  env.jwt.secret === 'super_secret_jwt_key_foodsaver_2026_secure' ||
+  env.jwt.refreshSecret === 'super_secret_refresh_jwt_key_foodsaver_2026' ||
+  env.jwt.secret === env.jwt.refreshSecret
+)) {
+  throw new Error('Production requires distinct, non-default JWT_SECRET and JWT_REFRESH_SECRET');
+}
