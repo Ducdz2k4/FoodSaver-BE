@@ -1,6 +1,7 @@
 import ngeohash from 'ngeohash';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedDanang } from './seed_danang.js';
 
 const prisma = new PrismaClient();
 
@@ -206,6 +207,8 @@ async function main() {
       wasteRisk: 'HIGH',
     },
   });
+
+  await seedDanang();
 
   console.log('✅ Seed completed successfully! 6 test accounts created with password: Admin@123456');
 }
