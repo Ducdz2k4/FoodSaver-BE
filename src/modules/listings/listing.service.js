@@ -305,19 +305,34 @@ export const ListingService = {
       where.category = category;
     }
 
+    const andConditions = [];
+
     if (search) {
-      where.OR = [
-        { title: { contains: search } },
-        { description: { contains: search } },
-        { partner: { businessName: { contains: search } } }
-      ];
+      andConditions.push({
+        OR: [
+          { title: { contains: search } },
+          { description: { contains: search } },
+          { partner: { businessName: { contains: search } } }
+        ]
+      });
     }
 
-    // Geohash filtering: If coordinates provided, filter by geohash prefix
-    if (lat !== undefined && lng !== undefined) {
-      const precision = radiusKm <= 2 ? 6 : radiusKm <= 6 ? 5 : 4;
-      const geohashPrefix = ngeohash.encode(lat, lng, precision);
-      where.geohash = { startsWith: geohashPrefix };
+    const latNum = lat !== undefined && lat !== null && lat !== '' ? Number(lat) : undefined;
+    const lngNum = lng !== undefined && lng !== null && lng !== '' ? Number(lng) : undefined;
+    const radiusNum = Number(radiusKm) || 5;
+
+    // Geohash filtering: include current cell and all 8 neighbors to avoid edge-of-cell cutoffs
+    if (latNum !== undefined && lngNum !== undefined && !isNaN(latNum) && !isNaN(lngNum)) {
+      const precision = radiusNum <= 2 ? 6 : radiusNum <= 10 ? 5 : 4;
+      const geohashPrefix = ngeohash.encode(latNum, lngNum, precision);
+      const neighbors = [geohashPrefix, ...ngeohash.neighbors(geohashPrefix)];
+      andConditions.push({
+        OR: neighbors.map((p) => ({ geohash: { startsWith: p } }))
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     let orderBy = [{ expiryAt: 'asc' }];
@@ -351,8 +366,8 @@ export const ListingService = {
 
     const formattedListings = listings.map((l) => {
       let distanceKm = undefined;
-      if (lat !== undefined && lng !== undefined) {
-        distanceKm = calculateDistance(lat, lng, Number(l.lat), Number(l.lng));
+      if (latNum !== undefined && lngNum !== undefined && !isNaN(latNum) && !isNaN(lngNum)) {
+        distanceKm = calculateDistance(latNum, lngNum, Number(l.lat), Number(l.lng));
       }
       return {
         id: l.id,

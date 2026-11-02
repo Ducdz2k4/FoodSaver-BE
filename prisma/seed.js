@@ -1,3 +1,4 @@
+import ngeohash from 'ngeohash';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -86,7 +87,7 @@ async function main() {
       address: '128 Nguyễn Trãi, Phường Bến Thành, Quận 1, TP.HCM',
       lat: 10.7712,
       lng: 106.6908,
-      geohash: 'w4rwt2',
+      geohash: ngeohash.encode(10.7712, 106.6908),
       phone: '02838383838',
     },
   });
@@ -122,7 +123,7 @@ async function main() {
       address: '45 Lê Duẩn, Bến Nghé, Quận 1, TP.HCM',
       lat: 10.7795,
       lng: 106.6998,
-      geohash: 'w4rwt5',
+      geohash: ngeohash.encode(10.7795, 106.6998),
       phone: '02839393939',
     },
   });
@@ -162,7 +163,7 @@ async function main() {
       address: '27 Tú Xương, Phường Võ Thị Sáu, Quận 3, TP.HCM',
       lat: 10.7815,
       lng: 106.6852,
-      geohash: 'w4rwt1',
+      geohash: ngeohash.encode(10.7815, 106.6852),
       phone: '02839391122',
     },
   });
@@ -195,7 +196,7 @@ async function main() {
       pickupAddress: '128 Nguyễn Trãi, Phường Bến Thành, Quận 1',
       lat: 10.7712,
       lng: 106.6908,
-      geohash: 'w4rwt2',
+      geohash: ngeohash.encode(10.7712, 106.6908),
       imageUrls: [
         'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=600',
       ],
