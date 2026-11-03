@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { OrderController } from './order.controller.js';
+import { SafetyReportController } from '../safety-reports/safetyReport.controller.js';
 import { validate } from '../../shared/middlewares/validate.js';
 import { authenticate } from '../../shared/middlewares/auth.js';
 import { requireVerifiedPartner } from '../../shared/middlewares/partnerGuard.js';
@@ -38,6 +39,8 @@ customerOrderRouter.patch('/:id/cancel', validate(cancelOrderSchema), OrderContr
 customerOrderRouter.patch('/:id/confirm-receipt', validate(confirmReceiptSchema), OrderController.customerConfirmReceipt);
 customerOrderRouter.post('/:id/review', validate(createReviewSchema), OrderController.createReview);
 customerOrderRouter.get('/:id/review', OrderController.getOrderReview);
+customerOrderRouter.post('/:id/safety-report', SafetyReportController.createReport);
+customerOrderRouter.get('/:id/safety-report', SafetyReportController.getReportByOrder);
 customerOrderRouter.post('/:id/adjustment-respond', validate(respondAdjustmentSchema), OrderController.respondAdjustment);
 
 // ==========================================
@@ -46,6 +49,7 @@ customerOrderRouter.post('/:id/adjustment-respond', validate(respondAdjustmentSc
 partnerOrderRouter.use(authenticate, requireVerifiedPartner);
 
 partnerOrderRouter.post('/:id/bargain-respond', validate(respondBargainSchema), OrderController.respondBargain);
+partnerOrderRouter.get('/:id/safety-report', SafetyReportController.getReportByOrder);
 partnerOrderRouter.get('/', OrderController.getPartnerOrders);
 partnerOrderRouter.patch('/:id/status', validate(updateOrderStatusSchema), OrderController.updatePartnerOrderStatus);
 partnerOrderRouter.patch('/:id/handover', validate(confirmHandoverSchema), OrderController.confirmHandover);

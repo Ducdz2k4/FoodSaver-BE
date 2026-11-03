@@ -15,6 +15,7 @@ import {
 import { notificationRoutes } from '../modules/notifications/notification.routes.js';
 import { favoriteRoutes } from '../modules/favorites/favorite.routes.js';
 import { adminStatsRoutes } from '../modules/admin/admin.routes.js';
+import { adminSafetyReportRoutes } from '../modules/safety-reports/safetyReport.routes.js';
 import { recipeRoutes } from '../modules/recipes/recipe.routes.js';
 import { mealPlanRoutes } from '../modules/meal-plans/mealPlan.routes.js';
 import { communityRoutes } from '../modules/community/community.routes.js';
@@ -62,5 +63,6 @@ router.use('/chat', chatRoutes);
 
 // Admin Analytics & ESG Reports
 router.use('/admin', adminStatsRoutes);
+router.use('/admin/safety-reports', adminSafetyReportRoutes);
 
 export const appRouter = router;
