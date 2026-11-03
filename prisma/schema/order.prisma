@@ -27,6 +27,33 @@ enum PaymentMethod {
   ONLINE
 }
 
+enum ReviewModerationStatus {
+  APPROVED
+  PENDING
+  HIDDEN
+}
+
+enum ReminderType {
+  UPCOMING_30M
+  EXPIRING_SOON
+}
+
+enum SafetyReportIssueType {
+  EXPIRED_FOOD
+  STRANGE_ODOR_MOLD
+  DAMAGED_PACKAGING
+  FOREIGN_OBJECT
+  HEALTH_SYMPTOM
+  OTHER
+}
+
+enum SafetyReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  REJECTED
+}
+
 model Order {
   id                     String            @id @default(uuid())
   orderNumber            String            @unique @db.VarChar(32)
@@ -52,6 +79,8 @@ model Order {
   isLocked               Boolean           @default(false)
   lockedAt               DateTime?
   pickupTimeWindow       String            @db.VarChar(100)
+  pickupStartAt          DateTime?
+  pickupEndAt            DateTime?
   pickupOtp              String?           @db.VarChar(6)
   pickupQrCode           String?           @db.VarChar(100)
   partnerConfirmedAt     DateTime?
@@ -65,19 +94,23 @@ model Order {
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
-  listing      Listing                 @relation(fields: [listingId], references: [id], onDelete: Restrict)
-  customer     User                    @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  history      OrderStatusHistory[]
-  reservations InventoryReservation[]
-  payments     Payment[]
-  chatThread   OrderChatThread?
-  callEvents   OrderCallEvent[]
+  listing            Listing                 @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  customer           User                    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  history            OrderStatusHistory[]
+  reservations       InventoryReservation[]
+  payments           Payment[]
+  chatThread         OrderChatThread?
+  callEvents         OrderCallEvent[]
+  review             OrderReview?
+  reminders          OrderPickupReminder[]
+  foodSafetyReports  FoodSafetyReport[]
 
   @@index([listingId])
   @@index([customerId])
   @@index([status])
   @@index([paymentStatus])
   @@index([fulfillmentType])
+  @@index([pickupStartAt, pickupEndAt])
   @@map("orders")
 }
 
@@ -94,4 +127,76 @@ model OrderStatusHistory {
 
   @@index([orderId])
   @@map("order_status_history")
+}
+
+model OrderReview {
+  id               String                 @id @default(uuid())
+  orderId          String                 @unique
+  customerId       String
+  partnerId        String
+  listingId        String
+  rating           Int                    @default(5)
+  comment          String?                @db.Text
+  packagingClean   Boolean?
+  isPublic         Boolean                @default(true)
+  moderationStatus ReviewModerationStatus @default(APPROVED)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  order            Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer         User                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  partner          PartnerProfile         @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  listing          Listing                @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  @@index([partnerId])
+  @@index([customerId])
+  @@index([listingId])
+  @@index([rating])
+  @@map("order_reviews")
+}
+
+model OrderPickupReminder {
+  id           String       @id @default(uuid())
+  orderId      String
+  reminderType ReminderType
+  scheduledFor DateTime
+  sentAt       DateTime?
+  status       String       @default("SENT") @db.VarChar(20)
+  createdAt    DateTime     @default(now())
+
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, reminderType])
+  @@index([scheduledFor])
+  @@map("order_pickup_reminders")
+}
+
+model FoodSafetyReport {
+  id              String                @id @default(uuid())
+  reportNumber    String                @unique @db.VarChar(32)
+  orderId         String
+  customerId      String
+  partnerId       String
+  listingId       String
+  issueType       SafetyReportIssueType @default(OTHER)
+  description     String                @db.Text
+  evidenceUrls    Json?
+  status          SafetyReportStatus    @default(OPEN)
+  adminNotes      String?               @db.Text
+  resolution      String?               @db.Text
+  resolvedBy      String?               @db.VarChar(36)
+  resolvedAt      DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer        User                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  partner         PartnerProfile        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  listing         Listing               @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  @@index([partnerId])
+  @@index([customerId])
+  @@index([status])
+  @@index([issueType])
+  @@map("food_safety_reports")
 }

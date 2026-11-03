@@ -39,6 +39,9 @@ model User {
   trust          UserTrust?
   trustEvents    TrustEvent[]
   chatSessions   ChatSession[]
+  orderReviews   OrderReview[]
+  followedPartners PartnerFollow[]
+  foodSafetyReports FoodSafetyReport[]
 
   @@index([role])
   @@index([status])

@@ -50,15 +50,17 @@ model Listing {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  orders    Order[]
-  favorites Favorite[]
-  reservations InventoryReservation[]
+  partner            PartnerProfile         @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  orders             Order[]
+  favorites          Favorite[]
+  reservations       InventoryReservation[]
+  reviews            OrderReview[]
+  foodSafetyReports  FoodSafetyReport[]
 
   @@index([status])
   @@index([expiryAt])
   @@index([category])
+  @@index([partnerId, status])
   @@index([geohash])
-  @@index([partnerId])
   @@map("listings")
 }

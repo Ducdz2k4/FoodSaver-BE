@@ -33,13 +33,32 @@ model PartnerProfile {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listings Listing[]
-  wallet PartnerWallet?
-  receivable PartnerReceivable?
-  payouts Payout[]
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listings           Listing[]
+  wallet             PartnerWallet?
+  receivable         PartnerReceivable?
+  payouts            Payout[]
+  reviews            OrderReview[]
+  followers          PartnerFollow[]
+  foodSafetyReports  FoodSafetyReport[]
 
   @@index([verificationStatus])
   @@index([geohash])
   @@map("partner_profiles")
+}
+
+model PartnerFollow {
+  id                String         @id @default(uuid())
+  userId            String
+  partnerId         String
+  notifyNewListing  Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partner           PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, partnerId])
+  @@index([partnerId])
+  @@index([userId])
+  @@map("partner_follows")
 }
