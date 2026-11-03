@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { UserController } from './user.controller.js';
+import { PartnerController } from '../partners/partner.controller.js';
 import { validate } from '../../shared/middlewares/validate.js';
 import { authenticate, authorize } from '../../shared/middlewares/auth.js';
 import {
@@ -19,6 +20,9 @@ router.use(authenticate);
 // Admin-only: list all users & create user (ADMIN, SYS_ADMIN)
 router.get('/', authorize('ADMIN', 'SYS_ADMIN'), validate(listUsersSchema), UserController.getAllUsers);
 router.post('/', authorize('ADMIN', 'SYS_ADMIN'), validate(createUserSchema), UserController.createUser);
+
+// User: Lấy danh sách quán đang theo dõi
+router.get('/me/followed-partners', PartnerController.getFollowedPartners);
 
 // Get single user details (Self or Admin)
 router.get('/:id', validate(userIdParamSchema), UserController.getUserById);

@@ -2,7 +2,7 @@ import ngeohash from 'ngeohash';
 import { prisma } from '../../config/database.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 import { evaluateListingWithJev } from '../../shared/utils/jev.js';
-import { broadcastEvent } from '../../config/socket.js';
+import { broadcastEvent, emitToUser } from '../../config/socket.js';
 
 // Haversine distance calculator between 2 points (lat, lng) in km
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -89,6 +89,9 @@ export const ListingService = {
 
     // Bắn realtime event
     broadcastEvent('LISTING_UPDATED', { id: listing.id, action: 'CREATED' });
+
+    // Gửi thông báo cho khách hàng đang theo dõi quán (Partner Follow)
+    notifyFollowersOfNewListing(listing, partnerProfile).catch(() => {});
 
     return listing;
   },
@@ -513,3 +516,47 @@ export const ListingService = {
     };
   }
 };
+
+async function notifyFollowersOfNewListing(listing, partnerProfile) {
+  try {
+    const followers = await prisma.partnerFollow.findMany({
+      where: {
+        partnerId: partnerProfile.id,
+        notifyNewListing: true,
+      },
+    });
+
+    for (const f of followers) {
+      if (f.userId === partnerProfile.userId) continue;
+
+      // Idempotency: verify no notification sent yet for this listing to this user
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: f.userId,
+          type: 'NEW_LISTING_FOLLOWED',
+          message: { contains: listing.id },
+        },
+      });
+
+      if (!existing) {
+        const notif = await prisma.notification.create({
+          data: {
+            userId: f.userId,
+            type: 'NEW_LISTING_FOLLOWED',
+            title: `🍲 ${partnerProfile.businessName} vừa có món mới!`,
+            message: `Quán vừa đăng suất cứu trợ mới: "${listing.title}" chỉ với ${Number(listing.discountPrice).toLocaleString('vi-VN')}đ. (Mã món: ${listing.id})`,
+            payload: {
+              listingId: listing.id,
+              partnerId: partnerProfile.id,
+              partnerName: partnerProfile.businessName,
+              actionUrl: `/listings/${listing.id}`,
+            },
+          },
+        });
+        emitToUser(f.userId, 'NEW_NOTIFICATION', notif);
+      }
+    }
+  } catch (err) {
+    console.error('[Notify Followers Error]:', err.message);
+  }
+}

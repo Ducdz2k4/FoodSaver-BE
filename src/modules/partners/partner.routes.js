@@ -2,16 +2,21 @@ import { Router } from 'express';
 import { PartnerController } from './partner.controller.js';
 import { OrderController } from '../orders/order.controller.js';
 import { validate } from '../../shared/middlewares/validate.js';
-import { authenticate, authorize } from '../../shared/middlewares/auth.js';
+import { authenticate, optionalAuth, authorize } from '../../shared/middlewares/auth.js';
 import { applyPartnerSchema, verifyPartnerSchema } from './partner.validation.js';
 
 const router = Router();
 
 // Public: Xem đánh giá chất lượng của quán
 router.get('/:id/reviews', OrderController.getPartnerReviews);
+router.get('/:id/follow-status', optionalAuth, PartnerController.getFollowStatus);
 
 // Yêu cầu xác thực JWT cho tất cả các route của đối tác
 router.use(authenticate);
+
+// User: Theo dõi quán & xem danh sách quán đã theo dõi
+router.get('/me/followed', PartnerController.getFollowedPartners);
+router.post('/:id/follow', PartnerController.toggleFollow);
 
 // User: Nộp hồ sơ & xem hồ sơ của chính mình
 router.post('/apply', validate(applyPartnerSchema), PartnerController.apply);

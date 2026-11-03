@@ -42,5 +42,32 @@ export const PartnerController = {
       message: `${actionLabel} hồ sơ đối tác thành công`,
       data: result
     });
+  }),
+
+  toggleFollow: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await PartnerService.toggleFollowPartner(req.user.id, id);
+    return ApiResponse.success(res, {
+      message: result.isFollowing ? 'Đã theo dõi cửa hàng thành công' : 'Đã bỏ theo dõi cửa hàng',
+      data: result
+    });
+  }),
+
+  getFollowStatus: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user?.id || null;
+    const result = await PartnerService.getFollowStatus(userId, id);
+    return ApiResponse.success(res, {
+      message: 'Trạng thái theo dõi cửa hàng',
+      data: result
+    });
+  }),
+
+  getFollowedPartners: asyncHandler(async (req, res) => {
+    const result = await PartnerService.getFollowedPartners(req.user.id);
+    return ApiResponse.success(res, {
+      message: 'Danh sách quán đang theo dõi',
+      data: result
+    });
   })
 };

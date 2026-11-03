@@ -171,5 +171,122 @@ export const PartnerService = {
     });
 
     return updatedProfile;
+  },
+
+  /**
+   * Theo dõi hoặc bỏ theo dõi quán yêu thích (Partner Follow)
+   */
+  async toggleFollowPartner(userId, partnerId) {
+    const partner = await prisma.partnerProfile.findUnique({
+      where: { id: partnerId },
+    });
+
+    if (!partner) {
+      throw ApiError.notFound('Không tìm thấy đối tác này');
+    }
+
+    if (partner.userId === userId) {
+      throw ApiError.badRequest('Bạn không thể tự theo dõi cửa hàng của chính mình');
+    }
+
+    const existing = await prisma.partnerFollow.findUnique({
+      where: {
+        userId_partnerId: {
+          userId,
+          partnerId,
+        },
+      },
+    });
+
+    if (existing) {
+      await prisma.partnerFollow.delete({
+        where: { id: existing.id },
+      });
+      const followerCount = await prisma.partnerFollow.count({
+        where: { partnerId },
+      });
+      return { isFollowing: false, followerCount };
+    } else {
+      await prisma.partnerFollow.create({
+        data: {
+          userId,
+          partnerId,
+          notifyNewListing: true,
+        },
+      });
+      const followerCount = await prisma.partnerFollow.count({
+        where: { partnerId },
+      });
+      return { isFollowing: true, followerCount };
+    }
+  },
+
+  /**
+   * Kiểm tra trạng thái theo dõi quán
+   */
+  async getFollowStatus(userId, partnerId) {
+    const followerCount = await prisma.partnerFollow.count({
+      where: { partnerId },
+    });
+
+    if (!userId) {
+      return { isFollowing: false, followerCount };
+    }
+
+    const existing = await prisma.partnerFollow.findUnique({
+      where: {
+        userId_partnerId: {
+          userId,
+          partnerId,
+        },
+      },
+    });
+
+    return { isFollowing: !!existing, followerCount };
+  },
+
+  /**
+   * Danh sách quán đang theo dõi của người dùng
+   */
+  async getFollowedPartners(userId) {
+    const follows = await prisma.partnerFollow.findMany({
+      where: { userId },
+      include: {
+        partner: {
+          select: {
+            id: true,
+            businessName: true,
+            businessType: true,
+            address: true,
+            phone: true,
+            lat: true,
+            lng: true,
+            verificationStatus: true,
+            user: { select: { avatar: true } },
+            listings: {
+              where: {
+                status: 'AVAILABLE',
+                expiryAt: { gt: new Date() },
+              },
+              select: { id: true, title: true, discountPrice: true, expiryAt: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return follows.map((f) => ({
+      followId: f.id,
+      partnerId: f.partner.id,
+      businessName: f.partner.businessName,
+      businessType: f.partner.businessType,
+      address: f.partner.address,
+      phone: f.partner.phone,
+      avatar: f.partner.user?.avatar || null,
+      activeListingCount: f.partner.listings?.length || 0,
+      activeListings: f.partner.listings || [],
+      followedAt: f.createdAt,
+    }));
   }
 };
