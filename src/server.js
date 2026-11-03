@@ -10,6 +10,7 @@ import { env } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { initSocket } from './config/socket.js';
 import { startExpirySweepWorker, stopExpirySweepWorker } from './workers/expirySweep.js';
+import { startPickupReminderWorker, stopPickupReminderWorker } from './workers/pickupReminderWorker.js';
 
 let server;
 
@@ -34,10 +35,14 @@ const startServer = async () => {
 
   // Khởi động tiến trình quét hạn sử dụng tự động (mỗi 60s)
   startExpirySweepWorker(60000);
+  // Khởi động tiến trình nhắc giờ lấy hàng tự động (mỗi 60s)
+  startPickupReminderWorker(60000);
 
   const handleShutdown = async (signal) => {
     console.log(`\n[Server] Received ${signal}. Closing HTTP server and database gracefully...`);
     stopExpirySweepWorker();
+    stopPickupReminderWorker();
+    stopPickupReminderWorker();
     
     if (server) {
       server.close(async () => {
@@ -65,6 +70,7 @@ const startServer = async () => {
   process.on('unhandledRejection', (reason) => {
     console.error('[FATAL] Unhandled Promise Rejection:', reason);
     stopExpirySweepWorker();
+    stopPickupReminderWorker();
     if (server) {
       server.close(async () => {
         await disconnectDatabase();

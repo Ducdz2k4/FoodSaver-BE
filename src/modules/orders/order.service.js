@@ -179,6 +179,8 @@ export const OrderService = {
           discountCode: discountCode ? discountCode.trim().toUpperCase() : null,
           discountAmount,
           pickupTimeWindow,
+          pickupStartAt: data.pickupStartAt ? new Date(data.pickupStartAt) : listing.pickupStartTime,
+          pickupEndAt: data.pickupEndAt ? new Date(data.pickupEndAt) : listing.pickupEndTime,
           pickupOtp,
           pickupQrCode,
           customerNotes: customerNotes || null,
