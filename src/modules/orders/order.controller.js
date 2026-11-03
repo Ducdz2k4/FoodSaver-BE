@@ -158,5 +158,34 @@ export const OrderController = {
       message: 'Xác nhận đã nhận món ăn thành công',
       data: order
     });
+  }),
+
+  createReview: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const review = await OrderService.createOrderReview(req.user.id, id, req.body);
+    return ApiResponse.created(res, {
+      message: 'Gửi đánh giá đơn hàng thành công',
+      data: review
+    });
+  }),
+
+  getOrderReview: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const review = await OrderService.getOrderReview(req.user.id, id);
+    return ApiResponse.success(res, {
+      message: 'Chi tiết đánh giá đơn hàng',
+      data: review
+    });
+  }),
+
+  getPartnerReviews: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const result = await OrderService.getPartnerReviews(id, req.query);
+    return ApiResponse.success(res, {
+      message: 'Danh sách đánh giá của quán',
+      data: result.reviews,
+      summary: result.summary,
+      meta: result.meta
+    });
   })
 };

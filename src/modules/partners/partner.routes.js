@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { PartnerController } from './partner.controller.js';
+import { OrderController } from '../orders/order.controller.js';
 import { validate } from '../../shared/middlewares/validate.js';
 import { authenticate, authorize } from '../../shared/middlewares/auth.js';
 import { applyPartnerSchema, verifyPartnerSchema } from './partner.validation.js';
 
 const router = Router();
+
+// Public: Xem đánh giá chất lượng của quán
+router.get('/:id/reviews', OrderController.getPartnerReviews);
 
 // Yêu cầu xác thực JWT cho tất cả các route của đối tác
 router.use(authenticate);

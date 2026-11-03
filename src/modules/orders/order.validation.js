@@ -148,3 +148,14 @@ export const applyCouponSchema = {
     orderTotal: z.coerce.number().min(0)
   })
 };
+
+export const createReviewSchema = {
+  params: z.object({
+    id: z.string().uuid('ID đơn hàng không hợp lệ')
+  }),
+  body: z.object({
+    rating: z.coerce.number().int().min(1, 'Đánh giá tối thiểu 1 sao').max(5, 'Đánh giá tối đa 5 sao'),
+    comment: z.string().trim().max(1000, 'Nội dung nhận xét tối đa 1000 ký tự').optional().nullable(),
+    packagingClean: z.boolean().optional().nullable()
+  })
+};

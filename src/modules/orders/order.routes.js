@@ -14,6 +14,7 @@ import {
   confirmHandoverSchema,
   confirmReceiptSchema,
   applyCouponSchema,
+  createReviewSchema,
   proposeAdjustmentSchema,
   respondAdjustmentSchema
 } from './order.validation.js';
@@ -35,6 +36,8 @@ customerOrderRouter.get('/', OrderController.getMyOrders);
 customerOrderRouter.get('/:id', OrderController.getOrderById);
 customerOrderRouter.patch('/:id/cancel', validate(cancelOrderSchema), OrderController.cancelOrder);
 customerOrderRouter.patch('/:id/confirm-receipt', validate(confirmReceiptSchema), OrderController.customerConfirmReceipt);
+customerOrderRouter.post('/:id/review', validate(createReviewSchema), OrderController.createReview);
+customerOrderRouter.get('/:id/review', OrderController.getOrderReview);
 customerOrderRouter.post('/:id/adjustment-respond', validate(respondAdjustmentSchema), OrderController.respondAdjustment);
 
 // ==========================================

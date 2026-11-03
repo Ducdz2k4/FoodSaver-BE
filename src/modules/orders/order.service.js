@@ -729,7 +729,8 @@ export const OrderService = {
         listing: { include: { partner: true } },
         customer: { select: { fullName: true, phone: true } },
         payments: true,
-        reservations: true
+        reservations: true,
+        review: true
       }
     });
 
@@ -982,6 +983,155 @@ export const OrderService = {
     });
 
     return formatOrderResponse(updated);
+  },
+
+  /**
+   * Khách hàng: Gửi đánh giá sau khi nhận hàng (Order Review)
+   */
+  async createOrderReview(userId, orderId, { rating, comment, packagingClean } = {}) {
+    const numRating = Number(rating);
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      throw ApiError.badRequest('Điểm đánh giá phải từ 1 đến 5 sao');
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        listing: { include: { partner: true } },
+        customer: true,
+      },
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Không tìm thấy đơn hàng');
+    }
+
+    if (order.customerId !== userId) {
+      throw ApiError.forbidden('Chỉ khách hàng sở hữu đơn mới có quyền gửi đánh giá');
+    }
+
+    if (order.listing?.partner?.userId === userId) {
+      throw ApiError.badRequest('Đối tác không thể tự đánh giá đơn hàng của chính mình');
+    }
+
+    if (order.status !== 'COMPLETED') {
+      throw ApiError.badRequest('Chỉ có thể đánh giá sau khi đơn hàng đã hoàn tất nhận hàng (COMPLETED)');
+    }
+
+    const existingReview = await prisma.orderReview.findUnique({
+      where: { orderId },
+    });
+
+    if (existingReview) {
+      throw ApiError.conflict('Đơn hàng này đã được đánh giá trước đó');
+    }
+
+    const review = await prisma.orderReview.create({
+      data: {
+        orderId,
+        customerId: userId,
+        partnerId: order.listing.partnerId,
+        listingId: order.listingId,
+        rating: numRating,
+        comment: comment?.trim() || null,
+        packagingClean: typeof packagingClean === 'boolean' ? packagingClean : null,
+        isPublic: true,
+        moderationStatus: 'APPROVED',
+      },
+      include: {
+        customer: { select: { id: true, fullName: true, avatar: true } },
+        listing: { select: { id: true, title: true } },
+      },
+    });
+
+    return review;
+  },
+
+  /**
+   * Lấy đánh giá của đơn hàng
+   */
+  async getOrderReview(userId, orderId) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        listing: { include: { partner: true } },
+      },
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Không tìm thấy đơn hàng');
+    }
+
+    const isCustomer = order.customerId === userId;
+    const isPartner = order.listing?.partner?.userId === userId;
+
+    if (!isCustomer && !isPartner) {
+      throw ApiError.forbidden('Bạn không có quyền xem đánh giá của đơn hàng này');
+    }
+
+    const review = await prisma.orderReview.findUnique({
+      where: { orderId },
+      include: {
+        customer: { select: { id: true, fullName: true, avatar: true } },
+      },
+    });
+
+    return review;
+  },
+
+  /**
+   * Lấy danh sách đánh giá công khai của đối tác
+   */
+  async getPartnerReviews(partnerId, { page = 1, limit = 10 } = {}) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+
+    const where = {
+      partnerId,
+      isPublic: true,
+      moderationStatus: 'APPROVED',
+    };
+
+    const [total, reviews, stats] = await Promise.all([
+      prisma.orderReview.count({ where }),
+      prisma.orderReview.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+        include: {
+          customer: { select: { id: true, fullName: true, avatar: true } },
+          listing: { select: { id: true, title: true } },
+        },
+      }),
+      prisma.orderReview.aggregate({
+        where,
+        _avg: { rating: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    const cleanPackagingCount = await prisma.orderReview.count({
+      where: {
+        ...where,
+        packagingClean: true,
+      },
+    });
+
+    return {
+      reviews,
+      summary: {
+        averageRating: Number(stats._avg?.rating || 0).toFixed(1),
+        totalReviews: total,
+        packagingCleanPercentage: total > 0 ? Math.round((cleanPackagingCount / total) * 100) : 100,
+      },
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      },
+    };
   }
 };
 
@@ -1024,6 +1174,15 @@ function formatOrderResponse(o) {
     isLocked: !!o.isLocked,
     lockedAt: o.lockedAt ? o.lockedAt.toISOString() : null,
     pickupTimeWindow: o.pickupTimeWindow,
+    pickupStartAt: o.pickupStartAt ? o.pickupStartAt.toISOString() : null,
+    pickupEndAt: o.pickupEndAt ? o.pickupEndAt.toISOString() : null,
+    review: o.review ? {
+      id: o.review.id,
+      rating: o.review.rating,
+      comment: o.review.comment,
+      packagingClean: o.review.packagingClean,
+      createdAt: o.review.createdAt.toISOString()
+    } : null,
     customerNotes: o.customerNotes,
     cancellationReason: o.cancellationReason,
     createdAt: o.createdAt.toISOString()
