@@ -22,6 +22,7 @@ import { communityRoutes } from '../modules/community/community.routes.js';
 import { chatRoutes } from '../modules/chat/chat.routes.js';
 import { paymentRoutes } from '../modules/payments/payment.routes.js';
 import { ledgerRoutes } from '../modules/ledger/ledger.routes.js';
+import { adminPayoutRoutes } from '../modules/ledger/ledgerAdmin.routes.js';
 import { communicationRoutes } from '../modules/communication/communication.routes.js';
 
 const router = Router();
@@ -61,8 +62,9 @@ router.use('/community', communityRoutes);
 // AI Chatbot Agent + JEV
 router.use('/chat', chatRoutes);
 
-// Admin Analytics & ESG Reports
+// Admin Analytics, ESG Reports, Moderation & Payout Settlement
 router.use('/admin', adminStatsRoutes);
 router.use('/admin/safety-reports', adminSafetyReportRoutes);
+router.use('/admin/payouts', adminPayoutRoutes);
 
 export const appRouter = router;

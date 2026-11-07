@@ -511,5 +511,338 @@ export const LedgerService = {
         createdAt: p.createdAt.toISOString()
       }))
     };
+  },
+
+  /**
+   * ADMIN: Lấy danh sách yêu cầu rút tiền với bộ lọc trạng thái và phân trang
+   */
+  async getAdminPayouts({ status, page = 1, limit = 10, search = '' }) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const where = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { payoutNumber: { contains: q } },
+        { bankAccountNo: { contains: q } },
+        { bankAccountName: { contains: q } },
+        { partner: { businessName: { contains: q } } }
+      ];
+    }
+
+    const [total, items] = await Promise.all([
+      prisma.payout.count({ where }),
+      prisma.payout.findMany({
+        where,
+        include: {
+          partner: {
+            select: {
+              id: true,
+              userId: true,
+              businessName: true,
+              phone: true,
+              businessType: true,
+              address: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  fullName: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum
+      })
+    ]);
+
+    return {
+      payouts: items.map(p => ({
+        id: p.id,
+        payoutNumber: p.payoutNumber,
+        partnerId: p.partnerId,
+        amount: Number(p.amount),
+        bankName: p.bankName,
+        bankAccountNo: p.bankAccountNo,
+        bankAccountName: p.bankAccountName,
+        bankReferenceCode: p.bankReferenceCode,
+        status: p.status,
+        rejectionReason: p.rejectionReason,
+        processedAt: p.processedAt ? p.processedAt.toISOString() : null,
+        createdAt: p.createdAt.toISOString(),
+        partner: p.partner
+      })),
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1
+      }
+    };
+  },
+
+  /**
+   * ADMIN: Chuyển trạng thái yêu cầu rút tiền sang Đang xử lý (PROCESSING)
+   */
+  async processPayout(adminUserId, payoutId) {
+    const payout = await prisma.payout.findUnique({
+      where: { id: payoutId },
+      include: { partner: true }
+    });
+
+    if (!payout) {
+      throw ApiError.notFound('Không tìm thấy yêu cầu rút tiền');
+    }
+
+    if (payout.status !== 'REQUESTED') {
+      throw ApiError.badRequest(`Không thể chuyển sang Đang xử lý khi yêu cầu đang ở trạng thái ${payout.status}`);
+    }
+
+    const updated = await prisma.payout.update({
+      where: { id: payoutId },
+      data: {
+        status: 'PROCESSING'
+      },
+      include: {
+        partner: {
+          select: {
+            id: true,
+            businessName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: adminUserId,
+        action: 'PAYOUT_PROCESSING',
+        targetType: 'PAYOUT',
+        targetId: payout.id,
+        metadata: {
+          payoutNumber: payout.payoutNumber,
+          amount: Number(payout.amount),
+          partnerId: payout.partnerId
+        }
+      }
+    }).catch(err => console.error('Failed to create audit log:', err));
+
+    return updated;
+  },
+
+  /**
+   * ADMIN: Hoàn tất chuyển khoản rút tiền (COMPLETED) + Ghi mã giao dịch ngân hàng
+   */
+  async completePayout(adminUserId, payoutId, { bankReferenceCode }) {
+    if (!bankReferenceCode || !bankReferenceCode.trim()) {
+      throw ApiError.badRequest('Vui lòng cung cấp mã giao dịch ngân hàng / ủy nhiệm chi (bankReferenceCode)');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const payout = await tx.payout.findUnique({
+        where: { id: payoutId },
+        include: { partner: true }
+      });
+
+      if (!payout) {
+        throw ApiError.notFound('Không tìm thấy yêu cầu rút tiền');
+      }
+
+      if (!['REQUESTED', 'PROCESSING'].includes(payout.status)) {
+        throw ApiError.badRequest(`Yêu cầu rút tiền này đã hoàn tất hoặc bị từ chối (${payout.status})`);
+      }
+
+      const amt = Number(payout.amount);
+
+      // Ledger Transaction:
+      // Dr payout_clearing:  [amount]
+      // Cr gateway_clearing: [amount]
+      const entries = [
+        {
+          accountCode: 'payout_clearing',
+          accountType: 'PAYOUT_CLEARING',
+          entryType: 'DEBIT',
+          amount: amt,
+          accountName: 'Tài khoản trung gian chi trả Payout'
+        },
+        {
+          accountCode: 'gateway_clearing',
+          accountType: 'GATEWAY_CLEARING',
+          entryType: 'CREDIT',
+          amount: amt,
+          accountName: 'Tài khoản thanh toán cổng Gateway / Tiền gửi'
+        }
+      ];
+
+      await this.createDoubleEntryTransaction(tx, {
+        idempotencyKey: `payout_complete_${payout.id}`,
+        type: 'PAYOUT_COMPLETED',
+        amount: amt,
+        description: `Hoàn tất chi trả tiền rút #${payout.payoutNumber} cho đối tác ${payout.partner.businessName} (Mã GD: ${bankReferenceCode.trim()})`,
+        entries
+      });
+
+      const updated = await tx.payout.update({
+        where: { id: payoutId },
+        data: {
+          status: 'COMPLETED',
+          bankReferenceCode: bankReferenceCode.trim(),
+          processedAt: new Date()
+        },
+        include: {
+          partner: {
+            select: {
+              id: true,
+              businessName: true,
+              phone: true
+            }
+          }
+        }
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: adminUserId,
+          action: 'PAYOUT_COMPLETED',
+          targetType: 'PAYOUT',
+          targetId: payout.id,
+          metadata: {
+            payoutNumber: payout.payoutNumber,
+            amount: amt,
+            partnerId: payout.partnerId,
+            bankReferenceCode: bankReferenceCode.trim()
+          }
+        }
+      }).catch(err => console.error('Failed to create audit log:', err));
+
+      // Notification to partner
+      await tx.notification.create({
+        data: {
+          userId: payout.partner.userId,
+          title: 'Yêu cầu rút tiền đã được xử lý thành công',
+          message: `Yêu cầu rút ${amt.toLocaleString('vi-VN')}đ (#${payout.payoutNumber}) đã được chuyển khoản thành công. Mã giao dịch ngân hàng: ${bankReferenceCode.trim()}`,
+          type: 'SYSTEM'
+        }
+      }).catch(err => console.error('Failed to create payout notification:', err));
+
+      return updated;
+    });
+  },
+
+  /**
+   * ADMIN: Từ chối yêu cầu rút tiền (REJECTED) + Bút toán đảo hoàn tiền khả dụng
+   */
+  async rejectPayout(adminUserId, payoutId, { rejectionReason }) {
+    if (!rejectionReason || !rejectionReason.trim()) {
+      throw ApiError.badRequest('Vui lòng nêu rõ lý do từ chối yêu cầu rút tiền');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const payout = await tx.payout.findUnique({
+        where: { id: payoutId },
+        include: { partner: true }
+      });
+
+      if (!payout) {
+        throw ApiError.notFound('Không tìm thấy yêu cầu rút tiền');
+      }
+
+      if (!['REQUESTED', 'PROCESSING'].includes(payout.status)) {
+        throw ApiError.badRequest(`Yêu cầu rút tiền này đã hoàn tất hoặc bị từ chối (${payout.status})`);
+      }
+
+      const amt = Number(payout.amount);
+
+      // Reversal Double-Entry Ledger:
+      // Dr payout_clearing:        [amount]
+      // Cr partner_wallet:<id>:   [amount]
+      const entries = [
+        {
+          accountCode: 'payout_clearing',
+          accountType: 'PAYOUT_CLEARING',
+          entryType: 'DEBIT',
+          amount: amt,
+          accountName: 'Tài khoản trung gian chi trả Payout'
+        },
+        {
+          accountCode: `partner_wallet:${payout.partnerId}`,
+          accountType: 'PARTNER_WALLET',
+          partnerId: payout.partnerId,
+          entryType: 'CREDIT',
+          amount: amt,
+          accountName: `Ví số dư khả dụng - Quán ${payout.partner.businessName}`
+        }
+      ];
+
+      await this.createDoubleEntryTransaction(tx, {
+        idempotencyKey: `payout_reject_${payout.id}`,
+        type: 'PAYOUT_REVERSAL',
+        amount: amt,
+        description: `Bút toán đảo hoàn tiền rút #${payout.payoutNumber} do bị từ chối: ${rejectionReason.trim()}`,
+        entries
+      });
+
+      // Hoàn trả số dư khả dụng cho ví đối tác
+      await tx.partnerWallet.update({
+        where: { partnerId: payout.partnerId },
+        data: {
+          availableBalance: { increment: amt }
+        }
+      });
+
+      const updated = await tx.payout.update({
+        where: { id: payoutId },
+        data: {
+          status: 'REJECTED',
+          rejectionReason: rejectionReason.trim(),
+          processedAt: new Date()
+        },
+        include: {
+          partner: {
+            select: {
+              id: true,
+              businessName: true,
+              phone: true
+            }
+          }
+        }
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: adminUserId,
+          action: 'PAYOUT_REJECTED',
+          targetType: 'PAYOUT',
+          targetId: payout.id,
+          metadata: {
+            payoutNumber: payout.payoutNumber,
+            amount: amt,
+            partnerId: payout.partnerId,
+            rejectionReason: rejectionReason.trim()
+          }
+        }
+      }).catch(err => console.error('Failed to create audit log:', err));
+
+      // Notification to partner
+      await tx.notification.create({
+        data: {
+          userId: payout.partner.userId,
+          title: 'Yêu cầu rút tiền bị từ chối',
+          message: `Yêu cầu rút ${amt.toLocaleString('vi-VN')}đ (#${payout.payoutNumber}) đã bị từ chối. Lý do: ${rejectionReason.trim()}. Số tiền đã được hoàn trả về số dư khả dụng.`,
+          type: 'SYSTEM'
+        }
+      }).catch(err => console.error('Failed to create payout notification:', err));
+
+      return updated;
+    });
   }
 };
