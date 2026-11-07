@@ -15,6 +15,14 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : '*',
   databaseUrl: process.env.DATABASE_URL || '',
   paymentWebhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
+  xgate: {
+    apiKey: process.env.XGATE_API_KEY || 'xgate_16d0d91101f3e032d7d052fcc61159b66520',
+    apiUrl: process.env.XGATE_API_URL || 'https://api.xgate.vn/api/v1',
+    bankAccount: process.env.BANK_ACCOUNT_NUMBER || '6240247363',
+    bankName: process.env.BANK_NAME || 'BIDV',
+    bankCode: process.env.BANK_CODE || 'bidv',
+    accountName: process.env.BANK_ACCOUNT_NAME || 'FOODSAVER'
+  },
   jwt: {
     secret: process.env.JWT_SECRET || 'super_secret_jwt_key_foodsaver_2026_secure',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',

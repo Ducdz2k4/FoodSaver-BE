@@ -32,45 +32,40 @@ export const PaymentService = {
   },
 
   /**
-   * Xử lý Webhook từ SePay (Cổng thanh toán ngân hàng tự động BIDV, Vietcombank, MBBank...)
+   * Xử lý Webhook từ xGate / SePay (Cổng thanh toán ngân hàng BIDV tự động)
    */
-  async processSePayWebhook(data) {
-    const {
-      id,
-      gateway,
-      accountNumber,
-      content,
-      transferType,
-      transferAmount,
-      referenceCode,
-      description
-    } = data;
+  async processBankingWebhook(data) {
+    const type = String(data.type || data.transferType || 'in').toLowerCase();
+    const amount = Number(data.amount || data.transferAmount || 0);
+    const contentStr = String(data.content || data.description || '');
+    const txId = String(data.id || data.referenceCode || Date.now());
+    const gateway = String(data.gateway || data.receiver_bank_name || 'BIDV');
+    const accountNumber = String(data.accountNumber || data.receiver_account || '');
 
-    // Chỉ nhận giao dịch tiền vào ("in")
-    if (transferType && transferType.toLowerCase() !== 'in') {
+    // Nếu là giao dịch tiền ra ("out"): kiểm tra xem có khớp lệnh rút tiền nào của đối tác không
+    if (type === 'out') {
+      console.log(`[xGate/Banking Webhook] Giao dịch tiền ra (Chi tiền: ${amount}đ) - ID: ${txId}`);
       return {
         success: true,
-        message: 'Giao dịch không phải tiền vào (transferType !== "in"), bỏ qua xử lý.',
-        ignored: true
+        message: 'Giao dịch tiền ra đã được ghi nhận vào hệ thống.',
+        type: 'out',
+        amount,
+        txId
       };
     }
 
-    const amount = Number(transferAmount);
-    const contentStr = String(content || description || '');
-
-    // Phát hiện test webhook từ SePay (khi tạo kết nối hoặc ấn "Test Webhook")
-    if (!contentStr || /test|sepay|ping/i.test(contentStr)) {
-      console.log(`[SePay Webhook] Nhận test webhook thành công từ SePay (ID: ${id})`);
+    // Phát hiện test webhook (khi tạo kết nối hoặc ấn test)
+    if (!contentStr || /test|xgate|sepay|ping/i.test(contentStr)) {
+      console.log(`[Banking Webhook] Nhận test ping thành công (ID: ${txId})`);
       return {
         success: true,
-        message: 'Kết nối SePay Webhook hoạt động bình thường! (Test Ping)',
+        message: 'Kết nối Webhook ngân hàng xGate / BIDV hoạt động bình thường! (Test Ping)',
         testMode: true,
-        received: { id, gateway, accountNumber, amount, content: contentStr }
+        received: { txId, gateway, accountNumber, amount, content: contentStr }
       };
     }
 
     // Trích xuất mã đơn hàng từ nội dung chuyển khoản
-    // Format đơn hàng: FS + 16 ký tự hoặc FS + số
     const fsMatch = contentStr.match(/FS[A-Z0-9]{4,20}/i);
     const uuidMatch = contentStr.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
 
@@ -91,10 +86,10 @@ export const PaymentService = {
     }
 
     if (!order) {
-      console.warn(`[SePay Webhook] Không tìm thấy đơn hàng cho nội dung: "${contentStr}" (Số tiền: ${amount}đ)`);
+      console.warn(`[Banking Webhook] Không tìm thấy đơn hàng cho nội dung: "${contentStr}" (Số tiền: ${amount}đ)`);
       return {
         success: true,
-        message: `Đã nhận giao dịch SePay (ID ${id}) nhưng không tìm thấy mã đơn hàng phù hợp.`,
+        message: `Đã nhận giao dịch ngân hàng (ID ${txId}) nhưng không tìm thấy mã đơn hàng phù hợp.`,
         unmatched: true
       };
     }
@@ -102,10 +97,15 @@ export const PaymentService = {
     // Gọi hàm xử lý đơn trực tuyến đã có cơ chế Escrow & Chống lặp Idempotency
     return this.processOnlineWebhook({
       orderId: order.id,
-      gatewayTransactionId: String(referenceCode || id),
+      gatewayTransactionId: txId,
       amount,
-      idempotencyKey: `sepay_${id}`
+      idempotencyKey: `bank_${txId}`
     });
+  },
+
+  // Alias for backward compatibility
+  async processSePayWebhook(data) {
+    return this.processBankingWebhook(data);
   },
 
   /**
