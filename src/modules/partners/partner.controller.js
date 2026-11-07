@@ -87,4 +87,13 @@ export const PartnerController = {
     });
   }),
 
+  replyReview: asyncHandler(async (req, res) => {
+    const { reviewId } = req.params;
+    const { replyText } = req.body;
+    const result = await PartnerService.replyReview(req.user.id, reviewId, { replyText });
+    return ApiResponse.success(res, {
+      message: 'Gửi phản hồi đánh giá thành công',
+      data: result
+    });
+  }),
 };

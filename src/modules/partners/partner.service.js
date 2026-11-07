@@ -312,6 +312,10 @@ export const PartnerService = {
       updateData.geohash = ngeohash.encode(data.lat, data.lng, 7);
     }
 
+    if (data.isOpen !== undefined) {
+      updateData.isOpen = Boolean(data.isOpen);
+    }
+
     // Gộp metadata (giờ lấy đồ, hướng dẫn nhận món, trạng thái mở quán)
     const currentMeta = (profile.metadata && typeof profile.metadata === 'object') ? profile.metadata : {};
     const newMeta = {
@@ -319,7 +323,7 @@ export const PartnerService = {
       defaultPickupStart: data.defaultPickupStart || currentMeta.defaultPickupStart || '18:00',
       defaultPickupEnd: data.defaultPickupEnd || currentMeta.defaultPickupEnd || '21:30',
       pickupInstructions: data.pickupInstructions !== undefined ? data.pickupInstructions : currentMeta.pickupInstructions,
-      isOpen: data.isOpen !== undefined ? Boolean(data.isOpen) : (currentMeta.isOpen ?? true)
+      isOpen: data.isOpen !== undefined ? Boolean(data.isOpen) : (currentMeta.isOpen ?? profile.isOpen ?? true)
     };
     updateData.metadata = newMeta;
 
@@ -370,15 +374,76 @@ export const PartnerService = {
       _count: true
     });
 
+    // Tính tỷ lệ đóng gói sạch sẽ
+    const cleanCount = await prisma.orderReview.count({
+      where: { partnerId: profile.id, packagingClean: true }
+    });
+    const packagingCleanPercentage = total > 0 ? Math.round((cleanCount / total) * 100) : 100;
+
     return {
       reviews,
       total,
       avgRating: aggregate._avg.rating ? Number(aggregate._avg.rating.toFixed(1)) : 5.0,
       totalReviews: aggregate._count || 0,
+      packagingCleanPercentage,
       page: pageNum,
       limit: limitNum,
-      totalPages: Math.ceil(total / limitNum)
+      totalPages: Math.ceil(total / limitNum) || 1
     };
   },
 
+  /**
+   * Phản hồi đánh giá của khách hàng (Store Reply)
+   */
+  async replyReview(userId, reviewId, { replyText }) {
+    const profile = await prisma.partnerProfile.findUnique({
+      where: { userId }
+    });
+
+    if (!profile) {
+      throw ApiError.notFound('Chưa tìm thấy hồ sơ đối tác');
+    }
+
+    if (!replyText || !replyText.trim()) {
+      throw ApiError.badRequest('Vui lòng nhập nội dung phản hồi');
+    }
+
+    if (replyText.trim().length > 1000) {
+      throw ApiError.badRequest('Nội dung phản hồi không được vượt quá 1000 ký tự');
+    }
+
+    const review = await prisma.orderReview.findUnique({
+      where: { id: reviewId },
+      include: {
+        order: true
+      }
+    });
+
+    if (!review) {
+      throw ApiError.notFound('Không tìm thấy đánh giá này');
+    }
+
+    if (review.partnerId !== profile.id && review.order?.partnerId !== profile.id) {
+      throw ApiError.forbidden('Bạn không có quyền phản hồi đánh giá của cửa hàng khác');
+    }
+
+    const updatedReview = await prisma.orderReview.update({
+      where: { id: reviewId },
+      data: {
+        replyText: replyText.trim(),
+        repliedAt: new Date()
+      },
+      include: {
+        customer: { select: { fullName: true, avatar: true } },
+        order: {
+          select: {
+            orderNumber: true,
+            listing: { select: { title: true, imageUrls: true } }
+          }
+        }
+      }
+    });
+
+    return updatedReview;
+  }
 };

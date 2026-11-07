@@ -7,8 +7,9 @@ import { applyPartnerSchema, verifyPartnerSchema } from './partner.validation.js
 
 const router = Router();
 
-// Partner: Xem đánh giá của chính quán mình (phải đặt trước /:id/reviews)
+// Partner: Xem và phản hồi đánh giá của chính quán mình (phải đặt trước /:id/reviews)
 router.get('/me/reviews', authenticate, PartnerController.getMyReviews);
+router.post('/me/reviews/:reviewId/reply', authenticate, PartnerController.replyReview);
 
 // Public: Xem đánh giá chất lượng của quán
 router.get('/:id/reviews', OrderController.getPartnerReviews);
