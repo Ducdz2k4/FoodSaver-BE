@@ -22,7 +22,10 @@ export const createApp = () => {
         return callback(null, true);
       }
 
-      if (Array.isArray(env.corsOrigin) && env.corsOrigin.includes(origin)) {
+      if (
+        (Array.isArray(env.corsOrigin) && (env.corsOrigin.includes('*') || env.corsOrigin.includes(origin))) ||
+        env.corsOrigin === '*'
+      ) {
         return callback(null, true);
       }
 
