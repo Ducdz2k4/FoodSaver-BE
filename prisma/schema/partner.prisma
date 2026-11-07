@@ -29,6 +29,7 @@ model PartnerProfile {
   lng                Decimal            @db.Decimal(11, 8)
   geohash            String             @db.VarChar(12)
   phone              String             @db.VarChar(20)
+  isOpen             Boolean            @default(true)
   metadata           Json?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

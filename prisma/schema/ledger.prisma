@@ -99,19 +99,20 @@ enum PayoutStatus {
 }
 
 model Payout {
-  id             String       @id @default(uuid())
-  payoutNumber   String       @unique @db.VarChar(36)
-  partnerId      String
-  amount         Decimal      @db.Decimal(14, 2)
-  bankName       String?      @db.VarChar(100)
-  bankAccountNo  String?      @db.VarChar(50)
-  bankAccountName String?     @db.VarChar(100)
-  status         PayoutStatus @default(REQUESTED)
-  idempotencyKey String?      @unique @db.VarChar(100)
-  processedAt    DateTime?
-  rejectionReason String?     @db.Text
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                String       @id @default(uuid())
+  payoutNumber      String       @unique @db.VarChar(36)
+  partnerId         String
+  amount            Decimal      @db.Decimal(14, 2)
+  bankName          String?      @db.VarChar(100)
+  bankAccountNo     String?      @db.VarChar(50)
+  bankAccountName    String?      @db.VarChar(100)
+  bankReferenceCode String?      @db.VarChar(100)
+  status            PayoutStatus @default(REQUESTED)
+  idempotencyKey    String?      @unique @db.VarChar(100)
+  processedAt       DateTime?
+  rejectionReason   String?      @db.Text
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   partner PartnerProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 

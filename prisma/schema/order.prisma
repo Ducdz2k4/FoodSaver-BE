@@ -137,6 +137,8 @@ model OrderReview {
   listingId        String
   rating           Int                    @default(5)
   comment          String?                @db.Text
+  replyText        String?                @db.Text
+  repliedAt        DateTime?
   packagingClean   Boolean?
   isPublic         Boolean                @default(true)
   moderationStatus ReviewModerationStatus @default(APPROVED)
