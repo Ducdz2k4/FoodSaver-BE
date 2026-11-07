@@ -32,6 +32,83 @@ export const PaymentService = {
   },
 
   /**
+   * Xử lý Webhook từ SePay (Cổng thanh toán ngân hàng tự động BIDV, Vietcombank, MBBank...)
+   */
+  async processSePayWebhook(data) {
+    const {
+      id,
+      gateway,
+      accountNumber,
+      content,
+      transferType,
+      transferAmount,
+      referenceCode,
+      description
+    } = data;
+
+    // Chỉ nhận giao dịch tiền vào ("in")
+    if (transferType && transferType.toLowerCase() !== 'in') {
+      return {
+        success: true,
+        message: 'Giao dịch không phải tiền vào (transferType !== "in"), bỏ qua xử lý.',
+        ignored: true
+      };
+    }
+
+    const amount = Number(transferAmount);
+    const contentStr = String(content || description || '');
+
+    // Phát hiện test webhook từ SePay (khi tạo kết nối hoặc ấn "Test Webhook")
+    if (!contentStr || /test|sepay|ping/i.test(contentStr)) {
+      console.log(`[SePay Webhook] Nhận test webhook thành công từ SePay (ID: ${id})`);
+      return {
+        success: true,
+        message: 'Kết nối SePay Webhook hoạt động bình thường! (Test Ping)',
+        testMode: true,
+        received: { id, gateway, accountNumber, amount, content: contentStr }
+      };
+    }
+
+    // Trích xuất mã đơn hàng từ nội dung chuyển khoản
+    // Format đơn hàng: FS + 16 ký tự hoặc FS + số
+    const fsMatch = contentStr.match(/FS[A-Z0-9]{4,20}/i);
+    const uuidMatch = contentStr.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+
+    let order = null;
+    if (fsMatch) {
+      const orderNumber = fsMatch[0].toUpperCase();
+      order = await prisma.order.findFirst({
+        where: { orderNumber },
+        include: { payments: true, listing: true }
+      });
+    }
+
+    if (!order && uuidMatch) {
+      order = await prisma.order.findUnique({
+        where: { id: uuidMatch[0] },
+        include: { payments: true, listing: true }
+      });
+    }
+
+    if (!order) {
+      console.warn(`[SePay Webhook] Không tìm thấy đơn hàng cho nội dung: "${contentStr}" (Số tiền: ${amount}đ)`);
+      return {
+        success: true,
+        message: `Đã nhận giao dịch SePay (ID ${id}) nhưng không tìm thấy mã đơn hàng phù hợp.`,
+        unmatched: true
+      };
+    }
+
+    // Gọi hàm xử lý đơn trực tuyến đã có cơ chế Escrow & Chống lặp Idempotency
+    return this.processOnlineWebhook({
+      orderId: order.id,
+      gatewayTransactionId: String(referenceCode || id),
+      amount,
+      idempotencyKey: `sepay_${id}`
+    });
+  },
+
+  /**
    * Xử lý Webhook thanh toán Online từ Cổng thanh toán (VietQR / VNPay / MoMo)
    * Chống trùng lặp (Idempotent) & Giữ tiền vào Escrow
    */
