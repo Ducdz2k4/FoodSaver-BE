@@ -67,7 +67,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy to VPS via SSH
+      - name: Deploy to VPS via SSH & PM2
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -122,10 +122,6 @@ jobs:
             set -e
             echo '🚀 Starting deployment for FoodSaver Backend...'
 
-            # Ensure Docker daemon is running
-            sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
-            sudo usermod -aG docker \$USER 2>/dev/null || true
-
             # Clone or update repository
             if [ ! -d '${{ env.DEPLOY_DIR }}' ]; then
               sudo mkdir -p '${{ env.DEPLOY_DIR }}'
@@ -172,19 +168,23 @@ jobs:
               echo \"GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID\"
             } > .env
 
-            # Build and restart Docker Compose services
-            echo '🐳 Building and restarting Docker Compose services...'
-            docker compose build api
-            docker compose up -d --remove-orphans
+            # Install production dependencies
+            echo '📦 Installing dependencies...'
+            npm install --omit=dev
 
-            echo '⏳ Running Prisma database migrations in container...'
-            docker compose exec -T api npx prisma db push || true
+            # Generate Prisma Client & sync schema
+            echo '⚡ Generating Prisma Client and updating database schema...'
+            npx prisma generate
+            npx prisma db push
 
-            echo '⏳ Checking container status...'
-            sleep 5
-            docker compose ps
-            echo '📋 Container logs (api):'
-            docker compose logs --tail=100 api
+            # Reload PM2 service
+            echo '🔄 Reloading PM2 backend service...'
+            pm2 reload foodsaver-api || pm2 restart foodsaver-api || pm2 start src/server.js --name \"foodsaver-api\"
+            pm2 save
+
+            echo '⏳ Checking backend service status...'
+            sleep 3
+            pm2 status foodsaver-api
 
             echo '✅ Backend deployment completed successfully!'
           "

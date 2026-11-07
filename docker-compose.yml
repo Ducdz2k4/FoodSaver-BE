@@ -22,6 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: foodsaver-backend:latest
     container_name: foodsaver-api
     restart: unless-stopped
     env_file:
@@ -32,22 +33,6 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-foodsaver_user}:${MYSQL_PASSWORD:-foodsaver_password}@mysql:3306/${MYSQL_DATABASE:-foodsaver_db}
     ports:
       - "${PORT:-5000}:5000"
-    depends_on:
-      mysql:
-        condition: service_healthy
-
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
-    container_name: foodsaver-phpmyadmin
-    restart: unless-stopped
-    environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-      PMA_USER: ${MYSQL_USER:-foodsaver_user}
-      PMA_PASSWORD: ${MYSQL_PASSWORD:-foodsaver_password}
-      UPLOAD_LIMIT: 64M
-    ports:
-      - "8080:80"
     depends_on:
       mysql:
         condition: service_healthy
