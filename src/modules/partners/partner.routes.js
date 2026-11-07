@@ -7,6 +7,9 @@ import { applyPartnerSchema, verifyPartnerSchema } from './partner.validation.js
 
 const router = Router();
 
+// Partner: Xem đánh giá của chính quán mình (phải đặt trước /:id/reviews)
+router.get('/me/reviews', authenticate, PartnerController.getMyReviews);
+
 // Public: Xem đánh giá chất lượng của quán
 router.get('/:id/reviews', OrderController.getPartnerReviews);
 router.get('/:id/follow-status', optionalAuth, PartnerController.getFollowStatus);
@@ -21,6 +24,7 @@ router.post('/:id/follow', PartnerController.toggleFollow);
 // User: Nộp hồ sơ & xem hồ sơ của chính mình
 router.post('/apply', validate(applyPartnerSchema), PartnerController.apply);
 router.get('/me', PartnerController.getMyProfile);
+router.put('/me', PartnerController.updateMyProfile);
 
 // Admin: Thẩm định hồ sơ đối tác
 router.get('/', authorize('ADMIN', 'SYS_ADMIN'), PartnerController.getAllPartners);

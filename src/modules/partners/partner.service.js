@@ -288,5 +288,97 @@ export const PartnerService = {
       activeListings: f.partner.listings || [],
       followedAt: f.createdAt,
     }));
-  }
+  },
+
+  /**
+   * Cập nhật thông tin cài đặt cửa hàng của đối tác
+   */
+  async updateMyPartnerProfile(userId, data) {
+    const profile = await prisma.partnerProfile.findUnique({
+      where: { userId }
+    });
+
+    if (!profile) {
+      throw ApiError.notFound('Chưa tìm thấy hồ sơ đối tác của bạn');
+    }
+
+    const updateData = {};
+    if (data.businessName !== undefined) updateData.businessName = data.businessName;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.lat !== undefined && data.lng !== undefined) {
+      updateData.lat = data.lat;
+      updateData.lng = data.lng;
+      updateData.geohash = ngeohash.encode(data.lat, data.lng, 7);
+    }
+
+    // Gộp metadata (giờ lấy đồ, hướng dẫn nhận món, trạng thái mở quán)
+    const currentMeta = (profile.metadata && typeof profile.metadata === 'object') ? profile.metadata : {};
+    const newMeta = {
+      ...currentMeta,
+      defaultPickupStart: data.defaultPickupStart || currentMeta.defaultPickupStart || '18:00',
+      defaultPickupEnd: data.defaultPickupEnd || currentMeta.defaultPickupEnd || '21:30',
+      pickupInstructions: data.pickupInstructions !== undefined ? data.pickupInstructions : currentMeta.pickupInstructions,
+      isOpen: data.isOpen !== undefined ? Boolean(data.isOpen) : (currentMeta.isOpen ?? true)
+    };
+    updateData.metadata = newMeta;
+
+    return prisma.partnerProfile.update({
+      where: { id: profile.id },
+      data: updateData
+    });
+  },
+
+  /**
+   * Lấy danh sách đánh giá của quán đối tác hiện tại
+   */
+  async getMyPartnerReviews(userId, { page = 1, limit = 20 } = {}) {
+    const profile = await prisma.partnerProfile.findUnique({
+      where: { userId }
+    });
+
+    if (!profile) {
+      throw ApiError.notFound('Chưa tìm thấy hồ sơ đối tác');
+    }
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    const skip = (pageNum - 1) * limitNum;
+
+    const [reviews, total] = await Promise.all([
+      prisma.orderReview.findMany({
+        where: { partnerId: profile.id },
+        skip,
+        take: limitNum,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { fullName: true, avatar: true } },
+          order: {
+            select: {
+              orderNumber: true,
+              listing: { select: { title: true, imageUrls: true } }
+            }
+          }
+        }
+      }),
+      prisma.orderReview.count({ where: { partnerId: profile.id } })
+    ]);
+
+    const aggregate = await prisma.orderReview.aggregate({
+      where: { partnerId: profile.id },
+      _avg: { rating: true },
+      _count: true
+    });
+
+    return {
+      reviews,
+      total,
+      avgRating: aggregate._avg.rating ? Number(aggregate._avg.rating.toFixed(1)) : 5.0,
+      totalReviews: aggregate._count || 0,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum)
+    };
+  },
+
 };

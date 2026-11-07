@@ -300,7 +300,7 @@ export const ListingService = {
     const skip = (pageNum - 1) * limitNum;
 
     const where = {
-      status: urgentOnly ? 'EXPIRING_SOON' : 'AVAILABLE',
+      status: urgentOnly ? 'EXPIRING_SOON' : { in: ['AVAILABLE', 'EXPIRING_SOON'] },
       expiryAt: { gt: new Date() }
     };
 

@@ -69,5 +69,22 @@ export const PartnerController = {
       message: 'Danh sách quán đang theo dõi',
       data: result
     });
-  })
+  }),
+
+  updateMyProfile: asyncHandler(async (req, res) => {
+    const result = await PartnerService.updateMyPartnerProfile(req.user.id, req.body);
+    return ApiResponse.success(res, {
+      message: 'Cập nhật cài đặt cửa hàng thành công',
+      data: result
+    });
+  }),
+
+  getMyReviews: asyncHandler(async (req, res) => {
+    const result = await PartnerService.getMyPartnerReviews(req.user.id, req.query);
+    return ApiResponse.success(res, {
+      message: 'Lấy danh sách đánh giá của quán thành công',
+      data: result
+    });
+  }),
+
 };
