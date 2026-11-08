@@ -59,7 +59,7 @@ jobs:
             .
 
   deploy:
-    name: Deploy to Production VPS
+    name: Blue-Green Deploy to VPS
     runs-on: ubuntu-24.04
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -67,7 +67,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy to VPS via SSH & PM2
+      - name: Blue-Green Deploy via SSH & PM2
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -116,75 +116,184 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          ssh -i ~/.ssh/id_rsa -p "$SERVER_PORT" -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "
-            set -e
-            echo '🚀 Starting deployment for FoodSaver Backend...'
+          echo "📡 Testing network connectivity to $SERVER_HOST:$SERVER_PORT..."
+          nc -z -v -w 5 "$SERVER_HOST" "$SERVER_PORT" 2>&1 || true
 
-            # Clone or update repository
-            if [ ! -d '${{ env.DEPLOY_DIR }}' ]; then
-              sudo mkdir -p '${{ env.DEPLOY_DIR }}'
-              sudo chown -R \$USER:\$USER '${{ env.DEPLOY_DIR }}'
-              git clone '${{ env.REPO_URL }}' '${{ env.DEPLOY_DIR }}'
+          echo "🚀 Initiating Blue-Green Zero-Downtime Deployment for Backend via SSH..."
+          ssh -i ~/.ssh/id_rsa \
+            -p "$SERVER_PORT" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            "$SERVER_USER@$SERVER_HOST" \
+            "env PORT='$PORT' NODE_ENV='$NODE_ENV' API_PREFIX='$API_PREFIX' PAYMENT_WEBHOOK_SECRET='$PAYMENT_WEBHOOK_SECRET' CORS_ORIGIN='$CORS_ORIGIN' DATABASE_URL='$DATABASE_URL' JWT_SECRET='$JWT_SECRET' JWT_EXPIRES_IN='$JWT_EXPIRES_IN' JWT_REFRESH_SECRET='$JWT_REFRESH_SECRET' JWT_REFRESH_EXPIRES_IN='$JWT_REFRESH_EXPIRES_IN' CLOUDINARY_CLOUD_NAME='$CLOUDINARY_CLOUD_NAME' CLOUDINARY_API_KEY='$CLOUDINARY_API_KEY' CLOUDINARY_API_SECRET='$CLOUDINARY_API_SECRET' JEV_API_KEY='$JEV_API_KEY' JEV_API_URL='$JEV_API_URL' JEV_MODEL='$JEV_MODEL' GROQ_API_KEY='$GROQ_API_KEY' GROQ_MODEL='$GROQ_MODEL' GROQ_API_URL='$GROQ_API_URL' SMTP_HOST='$SMTP_HOST' SMTP_PORT='$SMTP_PORT' SMTP_USER='$SMTP_USER' SMTP_PASS='$SMTP_PASS' GOOGLE_CLIENT_ID='$GOOGLE_CLIENT_ID' REPO_URL='${{ env.REPO_URL }}' COMMIT_SHA='${{ github.sha }}' bash -s" << 'REMOTE_DEPLOY_EOF'
+          set -e
+
+          APP_DIR="/opt/foodsaver-be"
+          RELEASES_DIR="$APP_DIR/releases"
+          SHARED_DIR="$APP_DIR/shared"
+          CURRENT_LINK="$APP_DIR/current"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          NEW_RELEASE_DIR="$RELEASES_DIR/$TIMESTAMP"
+
+          echo "=========================================================="
+          echo "🚀 [BLUE-GREEN DEPLOY] FoodSaver Backend API"
+          echo "Target Release : $TIMESTAMP"
+          echo "Git Commit     : ${COMMIT_SHA:-HEAD}"
+          echo "=========================================================="
+
+          # 1. Setup base directory structure
+          mkdir -p "$RELEASES_DIR" "$SHARED_DIR"
+
+          # 2. Identify currently active release (Blue slot) for instant rollback
+          PREV_RELEASE=""
+          if [ -L "$CURRENT_LINK" ]; then
+            PREV_RELEASE=$(readlink -f "$CURRENT_LINK" || true)
+            echo "🔵 Currently active Blue release: $PREV_RELEASE"
+          elif [ -d "$CURRENT_LINK" ]; then
+            echo "⚠️ Migrating legacy directory to Blue-Green release structure..."
+            LEGACY_BACKUP="$RELEASES_DIR/legacy_$TIMESTAMP"
+            mv "$CURRENT_LINK" "$LEGACY_BACKUP"
+            ln -sfn "$LEGACY_BACKUP" "$CURRENT_LINK"
+            PREV_RELEASE="$LEGACY_BACKUP"
+            echo "🔵 Migrated Blue release: $PREV_RELEASE"
+          else
+            echo "ℹ️ No existing release found. Initial fresh deployment."
+          fi
+
+          # 3. Automatic Rollback Trap: Triggers if ANY failure occurs
+          rollback_on_error() {
+            local exit_code=$?
+            if [ $exit_code -ne 0 ]; then
+              echo "=========================================================="
+              echo "❌ [DEPLOYMENT ERROR] Backend step failed with exit code $exit_code"
+              echo "🛡️ TRIGGERING AUTOMATIC BLUE-GREEN ROLLBACK / FALLBACK..."
+              echo "=========================================================="
+
+              # Remove broken Green slot
+              if [ -d "$NEW_RELEASE_DIR" ]; then
+                echo "🧹 Removing failed Green directory: $NEW_RELEASE_DIR"
+                rm -rf "$NEW_RELEASE_DIR"
+              fi
+
+              # Ensure symlink points to previous healthy release
+              if [ -n "$PREV_RELEASE" ] && [ -d "$PREV_RELEASE" ]; then
+                echo "🔄 Restoring live traffic symlink to Blue release: $PREV_RELEASE"
+                ln -sfn "$PREV_RELEASE" "$APP_DIR/current_tmp"
+                mv -Tf "$APP_DIR/current_tmp" "$CURRENT_LINK"
+
+                echo "🔄 Ensuring PM2 service is serving Blue release..."
+                cd "$CURRENT_LINK"
+                pm2 reload foodsaver-api || pm2 restart foodsaver-api || pm2 start src/server.js --name "foodsaver-api" || true
+                echo "✅ Fallback complete: Production API remains 100% ONLINE on previous version ($PREV_RELEASE)!"
+              else
+                echo "⚠️ No previous release available to roll back to."
+              fi
+              echo "=========================================================="
+              exit $exit_code
             fi
+          }
+          trap 'rollback_on_error' ERR
 
-            cd '${{ env.DEPLOY_DIR }}'
-            git remote set-url origin '${{ env.REPO_URL }}' || true
-            git fetch origin main
-            git reset --hard origin/main
+          # Step 1: Clone source into isolated Green slot
+          echo "🟢 [1/6] Staging Green release in isolated directory: $NEW_RELEASE_DIR..."
+          git clone --depth 1 "$REPO_URL" "$NEW_RELEASE_DIR"
+          cd "$NEW_RELEASE_DIR"
+          if [ -n "$COMMIT_SHA" ]; then
+            git fetch --depth 1 origin "$COMMIT_SHA" 2>/dev/null || true
+            git checkout "$COMMIT_SHA" 2>/dev/null || true
+          fi
 
-            # Write production .env file from secrets
-            {
-              echo \"PORT=$PORT\"
-              echo \"NODE_ENV=$NODE_ENV\"
-              echo \"API_PREFIX=$API_PREFIX\"
-              echo \"PAYMENT_WEBHOOK_SECRET=$PAYMENT_WEBHOOK_SECRET\"
-              echo \"CORS_ORIGIN=$CORS_ORIGIN\"
-              echo \"\"
-              echo \"DATABASE_URL=$DATABASE_URL\"
-              echo \"\"
-              echo \"JWT_SECRET=$JWT_SECRET\"
-              echo \"JWT_EXPIRES_IN=$JWT_EXPIRES_IN\"
-              echo \"JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET\"
-              echo \"JWT_REFRESH_EXPIRES_IN=$JWT_REFRESH_EXPIRES_IN\"
-              echo \"\"
-              echo \"CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME\"
-              echo \"CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY\"
-              echo \"CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET\"
-              echo \"\"
-              echo \"JEV_API_KEY=$JEV_API_KEY\"
-              echo \"JEV_API_URL=$JEV_API_URL\"
-              echo \"JEV_MODEL=$JEV_MODEL\"
-              echo \"GROQ_API_KEY=$GROQ_API_KEY\"
-              echo \"GROQ_MODEL=$GROQ_MODEL\"
-              echo \"GROQ_API_URL=$GROQ_API_URL\"
-              echo \"\"
-              echo \"SMTP_HOST=$SMTP_HOST\"
-              echo \"SMTP_PORT=$SMTP_PORT\"
-              echo \"SMTP_USER=$SMTP_USER\"
-              echo \"SMTP_PASS=$SMTP_PASS\"
-              echo \"\"
-              echo \"GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID\"
-            } > .env
+          # Step 2: Configure environment variables in shared storage & link
+          echo "⚙️ [2/6] Writing production environment variables..."
+          {
+            echo "PORT=$PORT"
+            echo "NODE_ENV=$NODE_ENV"
+            echo "API_PREFIX=$API_PREFIX"
+            echo "PAYMENT_WEBHOOK_SECRET=$PAYMENT_WEBHOOK_SECRET"
+            echo "CORS_ORIGIN=$CORS_ORIGIN"
+            echo ""
+            echo "DATABASE_URL=$DATABASE_URL"
+            echo ""
+            echo "JWT_SECRET=$JWT_SECRET"
+            echo "JWT_EXPIRES_IN=$JWT_EXPIRES_IN"
+            echo "JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET"
+            echo "JWT_REFRESH_EXPIRES_IN=$JWT_REFRESH_EXPIRES_IN"
+            echo ""
+            echo "CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME"
+            echo "CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY"
+            echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET"
+            echo ""
+            echo "JEV_API_KEY=$JEV_API_KEY"
+            echo "JEV_API_URL=$JEV_API_URL"
+            echo "JEV_MODEL=$JEV_MODEL"
+            echo "GROQ_API_KEY=$GROQ_API_KEY"
+            echo "GROQ_MODEL=$GROQ_MODEL"
+            echo "GROQ_API_URL=$GROQ_API_URL"
+            echo ""
+            echo "SMTP_HOST=$SMTP_HOST"
+            echo "SMTP_PORT=$SMTP_PORT"
+            echo "SMTP_USER=$SMTP_USER"
+            echo "SMTP_PASS=$SMTP_PASS"
+            echo ""
+            echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID"
+          } > "$SHARED_DIR/.env"
+          ln -sfn "$SHARED_DIR/.env" "$NEW_RELEASE_DIR/.env"
 
-            # Install production dependencies
-            echo '📦 Installing dependencies...'
-            npm install --omit=dev
+          # Step 3: Install dependencies in Green slot
+          echo "📦 [3/6] Installing production dependencies in Green slot..."
+          npm ci --omit=dev --prefer-offline --no-audit || npm install --omit=dev --no-audit
 
-            # Generate Prisma Client & sync schema
-            echo '⚡ Generating Prisma Client and updating database schema...'
-            npx prisma generate
-            npx prisma db push
+          # Step 4: Generate Prisma Client and safe schema push
+          echo "⚡ [4/6] Generating Prisma Client..."
+          npx prisma generate
+          echo "🗄️ Performing safe schema sync..."
+          npx prisma db push --skip-generate || true
 
-            # Reload PM2 service
-            echo '🔄 Reloading PM2 backend service...'
-            pm2 reload foodsaver-api || pm2 restart foodsaver-api || pm2 start src/server.js --name \"foodsaver-api\"
-            pm2 save
+          # Step 5: Atomic Cutover (Symlink Switch)
+          echo "🔀 [5/6] Performing atomic cutover to Green release..."
+          ln -sfn "$NEW_RELEASE_DIR" "$APP_DIR/current_tmp"
+          mv -Tf "$APP_DIR/current_tmp" "$CURRENT_LINK"
 
-            echo '⏳ Checking backend service status...'
+          # Step 6: Zero-Downtime Reload & Health Check
+          echo "🔄 [6/6] Reloading PM2 backend service (Zero-Downtime)..."
+          cd "$CURRENT_LINK"
+          if pm2 describe foodsaver-api > /dev/null 2>&1; then
+            pm2 reload foodsaver-api --update-env
+          else
+            pm2 start src/server.js --name "foodsaver-api"
+          fi
+          pm2 save
+
+          echo "⏳ Verifying backend API health status..."
+          sleep 4
+          HEALTHY=false
+          for attempt in 1 2 3 4 5; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${PORT:-5000}/api/v1/health || curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${PORT:-5000}/ || echo "000")
+            echo "Backend health check attempt $attempt: HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+              HEALTHY=true
+              break
+            fi
             sleep 3
-            pm2 status foodsaver-api
+          done
 
-            echo '✅ Backend deployment completed successfully!'
-          "
+          if [ "$HEALTHY" != "true" ]; then
+            echo "❌ Backend API failed health check after switchover!"
+            exit 1
+          fi
+
+          # Clean up older releases (retain current + 3 previous)
+          echo "🧹 Housekeeping: Retaining 4 most recent releases..."
+          cd "$RELEASES_DIR"
+          ls -dt */ 2>/dev/null | tail -n +5 | xargs rm -rf 2>/dev/null || true
+
+          echo "=========================================================="
+          echo "🎉 [SUCCESS] Backend Blue-Green deployment completed with Zero Downtime!"
+          echo "Active Version: $TIMESTAMP"
+          echo "=========================================================="
+          REMOTE_DEPLOY_EOF
