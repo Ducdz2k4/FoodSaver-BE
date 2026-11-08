@@ -31,7 +31,7 @@ export const PaymentMethodEnum = z.enum([
 
 export const createOrderSchema = {
   body: z.object({
-    listingId: z.string().uuid('ID món ăn không hợp lệ'),
+    listingId: z.string().trim().min(1, 'ID món ăn không hợp lệ'),
     quantity: z.coerce.number().int().min(1, 'Số lượng tối thiểu là 1 phần'),
     fulfillmentType: FulfillmentTypeEnum,
     paymentMethod: PaymentMethodEnum,
@@ -54,7 +54,7 @@ export const estimateShippingSchema = {
 
 export const bargainShippingSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     proposedFee: z.coerce.number().min(0).max(60000, 'Giá chém tối đa là 60.000đ')
@@ -63,7 +63,7 @@ export const bargainShippingSchema = {
 
 export const respondBargainSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     accepted: z.boolean(),
@@ -74,13 +74,13 @@ export const respondBargainSchema = {
 
 export const lockOrderSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   })
 };
 
 export const cancelOrderSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     reason: z.string().trim().max(255).optional()
@@ -89,7 +89,7 @@ export const cancelOrderSchema = {
 
 export const updateOrderStatusSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     status: z.enum([
@@ -106,7 +106,7 @@ export const updateOrderStatusSchema = {
 
 export const confirmHandoverSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     otp: z.string().trim().length(6, 'Mã OTP lấy hàng gồm 6 số').optional(),
@@ -116,7 +116,7 @@ export const confirmHandoverSchema = {
 
 export const confirmReceiptSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     note: z.string().trim().max(255).optional()
@@ -125,7 +125,7 @@ export const confirmReceiptSchema = {
 
 export const proposeAdjustmentSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     newQuantity: z.coerce.number().int().min(1, 'Số lượng mới tối thiểu là 1'),
@@ -135,7 +135,7 @@ export const proposeAdjustmentSchema = {
 
 export const respondAdjustmentSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     accepted: z.boolean()
@@ -151,7 +151,7 @@ export const applyCouponSchema = {
 
 export const createReviewSchema = {
   params: z.object({
-    id: z.string().uuid('ID đơn hàng không hợp lệ')
+    id: z.string().trim().min(1, 'ID đơn hàng không hợp lệ')
   }),
   body: z.object({
     rating: z.coerce.number().int().min(1, 'Đánh giá tối thiểu 1 sao').max(5, 'Đánh giá tối đa 5 sao'),

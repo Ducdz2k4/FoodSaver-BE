@@ -39,7 +39,7 @@ export const createListingSchema = {
 
 export const updateListingSchema = {
   params: z.object({
-    id: z.string().uuid('ID món ăn không hợp lệ')
+    id: z.string().trim().min(1, 'ID món ăn không hợp lệ')
   }),
   body: z.object({
     title: z.string().trim().min(2).max(150).optional(),
@@ -63,7 +63,7 @@ export const updateListingSchema = {
 
 export const updateListingStatusSchema = {
   params: z.object({
-    id: z.string().uuid('ID món ăn không hợp lệ')
+    id: z.string().trim().min(1, 'ID món ăn không hợp lệ')
   }),
   body: z.object({
     status: ListingStatusEnum
@@ -83,4 +83,3 @@ export const queryListingsSchema = {
     limit: z.coerce.number().int().min(1).max(200).default(12).optional()
   })
 };
-
