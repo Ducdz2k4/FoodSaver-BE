@@ -69,6 +69,9 @@ async function claimOrderTransition(tx, order, status) {
 }
 
 export const OrderService = {
+  verifyCoupon(code, subtotal) {
+    return verifyCoupon(code, subtotal);
+  },
   estimateShipping(distanceKm) {
     const defaultFee = calculateEstimatedShippingFee(distanceKm);
     return {
