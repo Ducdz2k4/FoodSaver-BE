@@ -2,11 +2,21 @@ import ngeohash from 'ngeohash';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { seedDanang } from './seed_danang.js';
+import { seedFullDatabase } from './seed_full.js';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('[Seed] Seeding database with 6 comprehensive test accounts...');
+  console.log('[Seed] Seeding database with full snapshot...');
+
+  // 1. Seed complete database snapshot (all users, partners, listings, meal plans, community posts, recipes, etc.)
+  try {
+    await seedFullDatabase();
+  } catch (err) {
+    console.warn('[Seed] Warning during seedFullDatabase:', err.message);
+  }
+
+  // 2. Ensure default core test accounts exist with Admin@123456 password
   const defaultPassword = await bcrypt.hash('Admin@123456', 10);
 
   // 1. Quản trị viên (Admin)
@@ -175,8 +185,6 @@ async function main() {
     update: {
       quantity: 5,
       status: 'AVAILABLE',
-      // Refresh time windows so re-seeding revives the listing instead of
-      // leaving the old (already elapsed) expiryAt for the sweep worker.
       expiryAt: new Date(Date.now() + 2.5 * 3600 * 1000),
       pickupStartTime: new Date(Date.now() + 1 * 3600 * 1000),
       pickupEndTime: new Date(Date.now() + 3 * 3600 * 1000),
@@ -210,7 +218,7 @@ async function main() {
 
   await seedDanang();
 
-  console.log('✅ Seed completed successfully! 6 test accounts created with password: Admin@123456');
+  console.log('✅ Seed completed successfully! All accounts and listings seeded. Test password: Admin@123456');
 }
 
 main()
