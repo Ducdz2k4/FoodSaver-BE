@@ -166,7 +166,7 @@ export const XGateService = {
     }
 
     if (order.paymentStatus === 'PAID') {
-      return { success: true, message: 'Đơn hàng đã được thanh toán trước đó', order };
+      return { success: true, verified: true, message: 'Đơn hàng đã được thanh toán trước đó', order };
     }
 
     // Tra cứu xGate theo mã đơn hàng trong content
